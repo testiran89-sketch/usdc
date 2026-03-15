@@ -1,5 +1,14 @@
 import { ethers } from "hardhat";
+import { getAddress } from "ethers";
 import * as fs from "fs";
+
+function normalizeAddress(value: string, field: string): string {
+  try {
+    return getAddress(value);
+  } catch {
+    throw new Error(`Invalid address in config for ${field}: ${value}`);
+  }
+}
 
 async function main() {
   const network = process.env.HARDHAT_NETWORK || process.env.CHAIN || "mainnet";
@@ -10,8 +19,12 @@ async function main() {
     throw new Error(`Network ${network} missing in config/networks.json.example`);
   }
 
+  const usdc = normalizeAddress(config.usdc, "usdc");
+  const aavePool = normalizeAddress(config.aavePool, "aavePool");
+  const balancerVault = normalizeAddress(config.balancerVault, "balancerVault");
+
   const ArbitrageExecutor = await ethers.getContractFactory("ArbitrageExecutor");
-  const executor = await ArbitrageExecutor.deploy(config.usdc, config.aavePool, config.balancerVault);
+  const executor = await ArbitrageExecutor.deploy(usdc, aavePool, balancerVault);
   await executor.waitForDeployment();
 
   const executorAddress = await executor.getAddress();
