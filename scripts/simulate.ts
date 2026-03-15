@@ -1,11 +1,8 @@
 import { ethers } from "hardhat";
+import { resolveExecutorAddress } from "../bot/runtimeConfig";
 
 async function main() {
-  const executorAddress = process.env.EXECUTOR_ADDRESS;
-  if (!executorAddress) {
-    throw new Error("Missing EXECUTOR_ADDRESS");
-  }
-
+  const executorAddress = process.env.EXECUTOR_ADDRESS || resolveExecutorAddress();
   const executor = await ethers.getContractAt("ArbitrageExecutor", executorAddress);
 
   const calldata = executor.interface.encodeFunctionData("minimumProfitThreshold", []);

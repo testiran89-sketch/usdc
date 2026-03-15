@@ -2,7 +2,7 @@ import { ethers } from "hardhat";
 import * as fs from "fs";
 
 async function main() {
-  const network = process.env.HARDHAT_NETWORK || "mainnet";
+  const network = process.env.HARDHAT_NETWORK || process.env.CHAIN || "mainnet";
   const configRaw = fs.readFileSync("config/networks.json.example", "utf8");
   const config = JSON.parse(configRaw)[network];
 
@@ -14,7 +14,14 @@ async function main() {
   const executor = await ArbitrageExecutor.deploy(config.usdc, config.aavePool, config.balancerVault);
   await executor.waitForDeployment();
 
-  console.log("ArbitrageExecutor deployed:", await executor.getAddress());
+  const executorAddress = await executor.getAddress();
+  fs.mkdirSync("deployments", { recursive: true });
+  fs.writeFileSync(
+    "deployments/latest.json",
+    JSON.stringify({ chain: network, executor: executorAddress, deployedAt: new Date().toISOString() }, null, 2)
+  );
+
+  console.log("ArbitrageExecutor deployed:", executorAddress);
 }
 
 main().catch((error) => {

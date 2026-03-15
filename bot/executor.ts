@@ -1,28 +1,30 @@
 import { JsonRpcProvider, Wallet, Contract, Interface, parseUnits } from "ethers";
-import fs from "fs";
 import { Opportunity, scanLoop } from "./scanner";
+import {
+  getChain,
+  loadNetworkConfig,
+  resolveExecutorAddress,
+  resolvePrivateRelay,
+  resolveRpcUrl
+} from "./runtimeConfig";
 
 const EXECUTOR_ABI = [
   "function executeArbitrage((address,uint256,(uint8,address,address,address,uint256,bytes)[],uint256,uint8)) external",
   "function minimumProfitThreshold() view returns (uint256)"
 ];
 
-const CHAIN = process.env.CHAIN || "mainnet";
-const EXECUTOR_ADDRESS = process.env.EXECUTOR_ADDRESS || "";
-const FLASHBOTS_RELAY = process.env.FLASHBOTS_RELAY || "https://relay.flashbots.net";
+const CHAIN = getChain();
+const EXECUTOR_ADDRESS = resolveExecutorAddress();
 const MAX_GAS_USDC = BigInt(process.env.MAX_GAS_USDC || 20_000_000);
 
-if (!process.env.RPC_URL) throw new Error("Missing RPC_URL");
 if (!process.env.PRIVATE_KEY) throw new Error("Missing PRIVATE_KEY");
-if (!EXECUTOR_ADDRESS) throw new Error("Missing EXECUTOR_ADDRESS");
 
-const provider = new JsonRpcProvider(process.env.RPC_URL);
-const privateProvider = new JsonRpcProvider(FLASHBOTS_RELAY);
+const provider = new JsonRpcProvider(resolveRpcUrl(CHAIN));
+const privateProvider = new JsonRpcProvider(resolvePrivateRelay(CHAIN));
 const signer = new Wallet(process.env.PRIVATE_KEY, provider);
 const privateSigner = new Wallet(process.env.PRIVATE_KEY, privateProvider);
 const executor = new Contract(EXECUTOR_ADDRESS, EXECUTOR_ABI, signer);
-const networks = JSON.parse(fs.readFileSync("config/networks.json.example", "utf8"));
-const cfg = networks[CHAIN];
+const cfg = loadNetworkConfig(CHAIN);
 
 function estimateGasCostUSDC(gasLimit: bigint, maxFeePerGas: bigint): bigint {
   const ethCost = gasLimit * maxFeePerGas;

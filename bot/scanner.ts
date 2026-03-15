@@ -1,5 +1,5 @@
 import { JsonRpcProvider, Contract, formatUnits } from "ethers";
-import fs from "fs";
+import { getChain, loadNetworkConfig, resolveRpcUrl } from "./runtimeConfig";
 
 export interface Opportunity {
   pair: string;
@@ -26,18 +26,14 @@ const QUOTER_ABI = [
 ];
 
 const POLL_MS = Number(process.env.POLL_MS || 4000);
-const CHAIN = process.env.CHAIN || "mainnet";
+const CHAIN = getChain();
 const TRADE_SIZE_USDC = BigInt(process.env.TRADE_SIZE_USDC || 50_000_000);
 const MIN_PROFIT = BigInt(process.env.MIN_PROFIT || 20_000_000);
 const FLASH_LOAN_FEE_BPS = BigInt(process.env.FLASH_LOAN_FEE_BPS || 9);
 const GAS_COST_USDC = BigInt(process.env.GAS_COST_USDC || 8_000_000);
 
-const networks = JSON.parse(fs.readFileSync("config/networks.json.example", "utf8"));
-const cfg = networks[CHAIN];
-if (!cfg) throw new Error(`Missing chain config for ${CHAIN}`);
-if (!process.env.RPC_URL) throw new Error("Missing RPC_URL");
-
-const provider = new JsonRpcProvider(process.env.RPC_URL);
+const cfg = loadNetworkConfig(CHAIN);
+const provider = new JsonRpcProvider(resolveRpcUrl(CHAIN));
 const uniQuoter = new Contract(cfg.uniswapV3Quoter, QUOTER_ABI, provider);
 
 const pairs: PairConfig[] = [
@@ -58,7 +54,6 @@ async function quoteUniswap(amountIn: bigint, tokenIn: string, tokenOut: string,
   return (await uniQuoter.quoteExactInputSingle(tokenIn, tokenOut, fee, amountIn, 0n)) as bigint;
 }
 
-// Adapter placeholders for router/pool-specific quoting. Replace with chain-specific contracts in production.
 async function quoteDex(dex: DexName, amountIn: bigint, tokenIn: string, tokenOut: string, fee: number): Promise<bigint> {
   const uniQuote = await quoteUniswap(amountIn, tokenIn, tokenOut, fee);
   if (dex === "UniswapV3") return uniQuote;
