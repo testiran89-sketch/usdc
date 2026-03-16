@@ -19,12 +19,24 @@ const NETWORKS: Record<ChainName, ChainConfig> = {
   }
 };
 
-export function getChain(): ChainName {
-  const chain = (process.env.CHAIN || "mainnet") as ChainName;
-  if (!(chain in NETWORKS)) {
-    throw new Error(`Unsupported CHAIN=${chain}. Use mainnet or arbitrum.`);
+function normalizeChain(input?: string): ChainName {
+  const raw = (input || "mainnet").toLowerCase();
+
+  if (["mainnet", "ethereum", "eth", "1"].includes(raw)) {
+    return "mainnet";
   }
-  return chain;
+
+  if (["arbitrum", "arbitrum-one", "arb", "42161"].includes(raw)) {
+    return "arbitrum";
+  }
+
+  throw new Error(
+    `Unsupported CHAIN=${input}. Use mainnet|ethereum|eth or arbitrum|arb (also supports chain IDs 1/42161).`
+  );
+}
+
+export function getChain(): ChainName {
+  return normalizeChain(process.env.CHAIN);
 }
 
 export function resolveRpcUrl(chain: ChainName): string {

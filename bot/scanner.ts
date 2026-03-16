@@ -22,7 +22,7 @@ interface PairConfig {
 }
 
 const QUOTER_ABI = [
-  "function quoteExactInputSingle(address,address,uint24,uint256,uint160) external returns (uint256)"
+  "function quoteExactInputSingle(address,address,uint24,uint256,uint160) external view returns (uint256)"
 ];
 
 const POLL_MS = Number(process.env.POLL_MS || 4000);
@@ -51,7 +51,7 @@ function computeNetProfit(sellRevenue: bigint, buyCost: bigint): bigint {
 }
 
 async function quoteUniswap(amountIn: bigint, tokenIn: string, tokenOut: string, fee: number): Promise<bigint> {
-  return (await uniQuoter.quoteExactInputSingle(tokenIn, tokenOut, fee, amountIn, 0n)) as bigint;
+  return (await uniQuoter.quoteExactInputSingle.staticCall(tokenIn, tokenOut, fee, amountIn, 0n)) as bigint;
 }
 
 async function quoteDex(dex: DexName, amountIn: bigint, tokenIn: string, tokenOut: string, fee: number): Promise<bigint> {

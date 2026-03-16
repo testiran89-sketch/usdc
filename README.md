@@ -75,6 +75,7 @@ npm run simulate
 
 You can still override anything via env vars:
 
+- `CHAIN` aliases supported: `mainnet|ethereum|eth|1` and `arbitrum|arb|arbitrum-one|42161`
 - `RPC_URL`, `MAINNET_RPC_URL`, `ARBITRUM_RPC_URL`
 - `FLASHBOTS_RELAY`
 - `EXECUTOR_ADDRESS`
