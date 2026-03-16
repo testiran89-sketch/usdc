@@ -91,6 +91,7 @@ myth analyze contracts/ArbitrageExecutor.sol
 
 ## Production Notes
 
+- Scanner now handles Uniswap Quoter v1/v2 call patterns and skips unavailable quote paths instead of crashing the loop.
 - Replace placeholder quote adapters in `bot/scanner.ts` with real per-DEX pool quoting logic.
 - Extend execution payload encoding for route-specific data (`Curve` indices, `Balancer` pool IDs).
 - Route all submissions via private relays / builder APIs to avoid public mempool exposure.
