@@ -1,0 +1,23 @@
+{
+  "name": "flash-loan-arbitrage-bot",
+  "version": "1.0.0",
+  "description": "Production-grade flash loan arbitrage system for USDC pairs",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "hardhat test",
+    "lint": "eslint . --ext .ts",
+    "deploy:mainnet": "hardhat run scripts/deploy.ts --network mainnet",
+    "deploy:arbitrum": "hardhat run scripts/deploy.ts --network arbitrum",
+    "simulate": "ts-node scripts/simulate.ts"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "@openzeppelin/contracts": "^5.0.2",
+    "@types/node": "^20.11.30",
+    "dotenv": "^16.4.5",
+    "ethers": "^6.11.1",
+    "hardhat": "^2.22.3",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.4.4"
+  }
+}
