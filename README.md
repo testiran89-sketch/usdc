@@ -33,13 +33,14 @@ SECURITY.md
 Only set these in `.env`:
 
 - `PRIVATE_KEY`
-- `ALCHEMY_API_KEY` (optional but recommended if you don't set custom RPC)
+- `ALCHEMY_API_KEY` (optional)
 
-The bot auto-fills:
+Defaults if not provided:
 
-- Mainnet RPC / Arbitrum RPC from Alchemy key
+- Scanner/executor auto-load `.env`
+- Public RPC fallback (`cloudflare-eth` on mainnet, `arb1.arbitrum.io/rpc` on Arbitrum)
 - Private relay (`https://relay.flashbots.net` for mainnet)
-- Deployed executor address from `deployments/latest.json` after deploy
+- Executor address from `deployments/latest.json` after deploy
 
 ```bash
 npm install
@@ -63,6 +64,13 @@ npx ts-node bot/scanner.ts
 npx ts-node bot/executor.ts
 ```
 
+## Simulate On-Chain Parameters
+
+```bash
+# uses RPC resolution from runtimeConfig (no hardhat fork needed)
+npm run simulate
+```
+
 ## Optional Overrides
 
 You can still override anything via env vars:
@@ -71,12 +79,6 @@ You can still override anything via env vars:
 - `FLASHBOTS_RELAY`
 - `EXECUTOR_ADDRESS`
 - `POLL_MS`, `TRADE_SIZE_USDC`, `MIN_PROFIT`, `MAX_GAS_USDC`
-
-## Simulate On-Chain Parameters
-
-```bash
-EXECUTOR_ADDRESS=<deployed_address> npm run simulate
-```
 
 ## Security Tooling
 

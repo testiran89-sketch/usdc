@@ -1,20 +1,21 @@
+import "dotenv/config";
 import fs from "fs";
 
 type ChainName = "mainnet" | "arbitrum";
 
 interface ChainConfig {
-  chainId: number;
   privateRpc: string;
+  publicRpc: string;
 }
 
 const NETWORKS: Record<ChainName, ChainConfig> = {
   mainnet: {
-    chainId: 1,
-    privateRpc: "https://relay.flashbots.net"
+    privateRpc: "https://relay.flashbots.net",
+    publicRpc: "https://cloudflare-eth.com"
   },
   arbitrum: {
-    chainId: 42161,
-    privateRpc: "https://arbitrum.blockpi.network/v1/rpc/public"
+    privateRpc: "https://arbitrum.blockpi.network/v1/rpc/public",
+    publicRpc: "https://arb1.arbitrum.io/rpc"
   }
 };
 
@@ -35,7 +36,7 @@ export function resolveRpcUrl(chain: ChainName): string {
     if (chain === "arbitrum") return `https://arb-mainnet.g.alchemy.com/v2/${alchemy}`;
   }
 
-  throw new Error("Missing RPC_URL (or provide ALCHEMY_API_KEY for auto RPC). ");
+  return NETWORKS[chain].publicRpc;
 }
 
 export function resolvePrivateRelay(chain: ChainName): string {

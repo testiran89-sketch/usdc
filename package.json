@@ -8,7 +8,7 @@
     "lint": "eslint . --ext .ts",
     "deploy:mainnet": "hardhat run scripts/deploy.ts --network mainnet",
     "deploy:arbitrum": "hardhat run scripts/deploy.ts --network arbitrum",
-    "simulate": "hardhat run scripts/simulate.ts"
+    "simulate": "ts-node scripts/simulate.ts"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox": "^5.0.0",

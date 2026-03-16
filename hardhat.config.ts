@@ -25,14 +25,7 @@ export default {
     }
   },
   networks: {
-    hardhat: {
-      forking: process.env.RPC_URL
-        ? {
-            url: process.env.RPC_URL,
-            blockNumber: process.env.FORK_BLOCK ? Number(process.env.FORK_BLOCK) : undefined
-          }
-        : undefined
-    },
+    hardhat: {},
     mainnet: {
       url: mainnetUrl,
       accounts: PRIVATE_KEY ? [PRIVATE_KEY] : []
