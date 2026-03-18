@@ -124,22 +124,6 @@ Or use the npm script:
 npm run deploy
 ```
 
-### Deploy with Remix on Arbitrum
-
-If Hardhat gives you trouble, you can deploy `contracts/FlashLoanArbitrage.sol` directly from Remix:
-
-1. Open the repository files in Remix.
-2. Select compiler `0.8.26`.
-3. Choose **Injected Provider - MetaMask** and switch MetaMask to **Arbitrum One**.
-4. Deploy `FlashLoanArbitrage` with **no constructor arguments**.
-5. After deployment, call `setExecutor(...)` only if you want the bot to use an address different from the deployer wallet.
-
-Important:
-
-- On **Arbitrum One**, gas is paid in **ETH on Arbitrum**, not USDC.
-- The contract now has the Arbitrum Aave v3 `PoolAddressesProvider` hardcoded, so Remix deployment does not require any Aave address input.
-- `owner` and `executor` both default to the deployer address for the first deployment, which keeps the Remix flow simple.
-
 After deployment, copy the deployed address into:
 
 ```bash
