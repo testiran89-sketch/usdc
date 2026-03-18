@@ -46,8 +46,7 @@ This repository contains a production-oriented USDC-centric flash-loan arbitrage
 - public RPC fallback list
 - default trade sizes
 - Uniswap fee tiers
-- optional Curve pool addresses
-- optional Balancer pool IDs
+- protocol defaults that are already baked into the codebase
 
 ## Supported tokens
 
@@ -109,7 +108,8 @@ Fill in at minimum:
 
 - `PRIVATE_KEY`
 - `ARBITRAGE_CONTRACT` after deployment
-- optional Curve/Balancer pool settings if you want those venues active
+
+You do **not** need to know Aave / pool / router addresses manually; they are already prefilled in the repository defaults.
 
 ## Deploy the contract
 
@@ -142,28 +142,20 @@ Or:
 npm start
 ```
 
-## Curve / Balancer configuration
+## Important note about pool addresses
 
-### Curve
+You said you do not have pool addresses and only want to provide:
 
-Curve pool addresses are intentionally configurable because route universes change over time. Set:
+1. wallet private key
+2. deployed contract address
 
-```bash
-CURVE_STABLE_POOL=0xYourCurveStablePool
-```
+The repository is now aligned with that workflow:
 
-Then ensure the token index mapping in `src/config/arbitrum.js` matches the actual pool.
+- `.env.example` only expects those two fields from you in practice
+- Aave and RPC defaults are already set
+- no Curve/Balancer pool IDs are required in `.env`
 
-### Balancer
-
-Balancer requires pool IDs, not only pool addresses. Set one or both:
-
-```bash
-BALANCER_USDC_WETH_POOL_ID=0x...
-BALANCER_STABLE_POOL_ID=0x...
-```
-
-Then verify the `assets` ordering and per-pair `assetInIndex` / `assetOutIndex` mappings in `src/config/arbitrum.js`.
+If later you want to widen the route universe, you can still edit `src/config/arbitrum.js`, but it is no longer required for first run.
 
 ## Operational notes
 
@@ -177,11 +169,10 @@ Then verify the `assets` ordering and per-pair `assetInIndex` / `assetOutIndex` 
 
 1. `npm install`
 2. `cp .env.example .env`
-3. add `PRIVATE_KEY`
+3. put your `PRIVATE_KEY`
 4. deploy the contract
-5. add `ARBITRAGE_CONTRACT`
-6. optionally add Curve/Balancer pool config
-7. run `node bot.js`
+5. put your `ARBITRAGE_CONTRACT`
+6. run `node bot.js`
 
 ## Security warnings
 

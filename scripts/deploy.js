@@ -2,11 +2,10 @@ const hre = require('hardhat');
 const { ethers } = hre;
 require('dotenv').config();
 
+const DEFAULT_AAVE_POOL_ADDRESSES_PROVIDER = '0xa97684ead0e402dC232d5A977953DF7ECBaB3CDb';
+
 async function main() {
-  const providerAddress = process.env.AAVE_POOL_ADDRESSES_PROVIDER;
-  if (!providerAddress) {
-    throw new Error('AAVE_POOL_ADDRESSES_PROVIDER is required in .env');
-  }
+  const providerAddress = process.env.AAVE_POOL_ADDRESSES_PROVIDER || DEFAULT_AAVE_POOL_ADDRESSES_PROVIDER;
 
   const [deployer] = await ethers.getSigners();
   const executor = process.env.BOT_EXECUTOR || deployer.address;

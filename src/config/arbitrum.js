@@ -55,45 +55,9 @@ const UNISWAP_V3_FEES = {
   'DAI-USDT': 100
 };
 
-const CURVE_POOLS = [
-  {
-    name: 'Curve Stable Pool Placeholder',
-    address: process.env.CURVE_STABLE_POOL || '',
-    supportedPairs: {
-      'USDC-USDT': { i: 0, j: 1 },
-      'USDT-USDC': { i: 1, j: 0 },
-      'USDC-DAI': { i: 0, j: 2 },
-      'DAI-USDC': { i: 2, j: 0 },
-      'DAI-USDT': { i: 2, j: 1 },
-      'USDT-DAI': { i: 1, j: 2 }
-    }
-  }
-].filter((pool) => pool.address);
+const CURVE_POOLS = [];
 
-const BALANCER_POOLS = [
-  {
-    name: 'Balancer USDC/WETH Placeholder',
-    poolId: process.env.BALANCER_USDC_WETH_POOL_ID || '',
-    assets: [TOKENS.USDC.address, TOKENS.WETH.address],
-    pairs: {
-      'USDC-WETH': { assetInIndex: 0, assetOutIndex: 1 },
-      'WETH-USDC': { assetInIndex: 1, assetOutIndex: 0 }
-    }
-  },
-  {
-    name: 'Balancer Stable Pool Placeholder',
-    poolId: process.env.BALANCER_STABLE_POOL_ID || '',
-    assets: [TOKENS.USDC.address, TOKENS.DAI.address, TOKENS.USDT.address],
-    pairs: {
-      'USDC-DAI': { assetInIndex: 0, assetOutIndex: 1 },
-      'DAI-USDC': { assetInIndex: 1, assetOutIndex: 0 },
-      'USDC-USDT': { assetInIndex: 0, assetOutIndex: 2 },
-      'USDT-USDC': { assetInIndex: 2, assetOutIndex: 0 },
-      'DAI-USDT': { assetInIndex: 1, assetOutIndex: 2 },
-      'USDT-DAI': { assetInIndex: 2, assetOutIndex: 1 }
-    }
-  }
-].filter((pool) => pool.poolId);
+const BALANCER_POOLS = [];
 
 module.exports = {
   TOKENS,
