@@ -144,6 +144,19 @@ function chunkLines(items, itemsPerLine = 2) {
   return lines;
 }
 
+function uniquePaths(paths) {
+  const seen = new Set();
+  const result = [];
+  for (const path of paths) {
+    const key = path.join('>');
+    if (!seen.has(key)) {
+      seen.add(key);
+      result.push(path);
+    }
+  }
+  return result;
+}
+
 class ArbitrageBot {
   constructor() {
     if (!process.env.PRIVATE_KEY) {
@@ -336,12 +349,14 @@ class ArbitrageBot {
       decoders.push({ type: 'uniswap', tokenIn, tokenOut, fee: uniFee, amountIn: baseAmount });
 
       for (const dex of this.v2Dexes) {
-        multicallPayload.push({
-          target: dex.address,
-          allowFailure: true,
-          callData: dex.interface.encodeFunctionData('getAmountsOut', [baseAmount, [tokenIn.address, tokenOut.address]])
-        });
-        decoders.push({ type: 'v2', dex: dex.name, tokenIn, tokenOut, amountIn: baseAmount });
+        for (const path of this.buildV2Paths(tokenIn, tokenOut)) {
+          multicallPayload.push({
+            target: dex.address,
+            allowFailure: true,
+            callData: dex.interface.encodeFunctionData('getAmountsOut', [baseAmount, path])
+          });
+          decoders.push({ type: 'v2', dex: dex.name, tokenIn, tokenOut, amountIn: baseAmount, path });
+        }
       }
 
       for (const curvePool of CURVE_POOLS) {
@@ -384,7 +399,7 @@ class ArbitrageBot {
           tokenOut: meta.tokenOut,
           amountIn: meta.amountIn,
           amountOut: amounts[amounts.length - 1],
-          routeData: { path: [meta.tokenIn.address, meta.tokenOut.address] }
+          routeData: { path: meta.path }
         }));
       } else if (meta.type === 'curve') {
         const [amountOut] = this.curvePoolInterface.decodeFunctionResult('get_dy', response.returnData);
@@ -456,7 +471,10 @@ class ArbitrageBot {
       return;
     }
     const key = `${quote.dex}:${quote.tokenIn.symbol}:${quote.tokenOut.symbol}`;
-    quotes.set(key, quote);
+    const existing = quotes.get(key);
+    if (!existing || quote.amountOut > existing.amountOut) {
+      quotes.set(key, quote);
+    }
   }
 
   makeQuote({ dex, tokenIn, tokenOut, amountIn, amountOut, routeData }) {
@@ -976,19 +994,43 @@ class ArbitrageBot {
 
   async safeQuoteV2Dex(dexName, tokenIn, tokenOut, amountIn) {
     const dex = this.getV2Dex(dexName);
+    const quotes = [];
     try {
-      const amounts = await dex.contract.getAmountsOut(amountIn, [tokenIn.address, tokenOut.address]);
-      return [this.makeQuote({
-        dex: dex.name,
-        tokenIn,
-        tokenOut,
-        amountIn,
-        amountOut: amounts[amounts.length - 1],
-        routeData: { path: [tokenIn.address, tokenOut.address] }
-      })];
+      for (const path of this.buildV2Paths(tokenIn, tokenOut)) {
+        try {
+          const amounts = await dex.contract.getAmountsOut(amountIn, path);
+          quotes.push(this.makeQuote({
+            dex: dex.name,
+            tokenIn,
+            tokenOut,
+            amountIn,
+            amountOut: amounts[amounts.length - 1],
+            routeData: { path }
+          }));
+        } catch {
+          // ignore per-path failures
+        }
+      }
+      return quotes.filter(Boolean);
     } catch {
-      return [];
+      return quotes.filter(Boolean);
     }
+  }
+
+  buildV2Paths(tokenIn, tokenOut) {
+    const directPath = [tokenIn.address, tokenOut.address];
+    const connectorSymbols = ['WETH', 'USDC', 'USDT', 'DAI'];
+    const paths = [directPath];
+
+    for (const connectorSymbol of connectorSymbols) {
+      const connector = TOKENS[connectorSymbol];
+      if (!connector || connector.address === tokenIn.address || connector.address === tokenOut.address) {
+        continue;
+      }
+      paths.push([tokenIn.address, connector.address, tokenOut.address]);
+    }
+
+    return uniquePaths(paths);
   }
 
   async safeQuoteCurve(tokenIn, tokenOut, amountIn) {
