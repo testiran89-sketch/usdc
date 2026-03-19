@@ -633,6 +633,7 @@ class ArbitrageBot {
     console.log(renderPanel('SCAN SNAPSHOT', [
       `quotes=${quotes.size}`,
       `dex=${dexParts.join(' | ')}`,
+      'flash-asset=USDC only',
       `direct=${directCount} triangular=${triangularCount} viable=${viableCount}`,
       inactiveDexes.length ? `inactive=${inactiveDexes.join(', ')}` : 'inactive=none'
     ], '36'));
@@ -640,18 +641,18 @@ class ArbitrageBot {
     if (radarLines.length) {
       console.log(renderPanel('ROUTE RADAR', radarLines, '35'));
       if (pairSpreadLines.length) {
-        console.log(renderPanel('PAIR COMPARISON (per 1 token)', pairSpreadLines.slice(0, 12), '34'));
+        console.log(renderPanel('PAIR COMPARISON ONLY (per 1 token, not arb)', pairSpreadLines.slice(0, 12), '34'));
       }
     } else if (quoteParts.length) {
       if (pairSpreadLines.length) {
-        console.log(renderPanel('PAIR COMPARISON (per 1 token)', pairSpreadLines.slice(0, 12), '34'));
+        console.log(renderPanel('PAIR COMPARISON ONLY (per 1 token, not arb)', pairSpreadLines.slice(0, 12), '34'));
       } else {
         console.log(renderPanel('MARKET SNAPSHOT', chunkLines(quoteParts, 2), '35'));
       }
     }
 
     if (!bestAttempt && directDiagnostics.length) {
-      console.log(renderPanel('BEST ROUNDTRIPS', directDiagnostics.map((entry) => this.formatDirectDiagnostic(entry)), '33'));
+      console.log(renderPanel('BEST USDC ROUNDTRIPS (actual arb check)', directDiagnostics.map((entry) => this.formatDirectDiagnostic(entry)), '33'));
     }
 
     if (bestAttempt) {
@@ -740,7 +741,7 @@ class ArbitrageBot {
 
     return diagnostics
       .sort((a, b) => (a.grossReturn > b.grossReturn ? -1 : 1))
-      .slice(0, 6);
+      .slice(0, 12);
   }
 
   findTriangularOpportunities(quotes) {
