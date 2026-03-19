@@ -1,11 +1,17 @@
 const { ethers } = require('ethers');
 
+const RPC_TIMEOUT_MS = Number(process.env.RPC_TIMEOUT_MS || 8_000);
+
 class RotatingRpcProvider {
   constructor(rpcUrls, chainId = 42161) {
     this.chainId = chainId;
     this.providers = rpcUrls.map((url) => ({
       url,
-      provider: new ethers.JsonRpcProvider(url, chainId, { staticNetwork: ethers.Network.from(chainId) }),
+      provider: (() => {
+        const request = new ethers.FetchRequest(url);
+        request.timeout = RPC_TIMEOUT_MS;
+        return new ethers.JsonRpcProvider(request, chainId, { staticNetwork: ethers.Network.from(chainId) });
+      })(),
       failures: 0,
       lastHealthyAt: 0
     }));
@@ -17,6 +23,7 @@ class RotatingRpcProvider {
       throw new Error('At least one RPC URL is required');
     }
 
+    const initErrors = [];
     for (let index = 0; index < this.providers.length; index += 1) {
       const candidate = this.providers[index];
       try {
@@ -29,10 +36,11 @@ class RotatingRpcProvider {
         return candidate.provider;
       } catch (error) {
         candidate.failures += 1;
+        initErrors.push(`${candidate.url} => ${error.code || error.name || 'ERROR'}: ${error.message}`);
       }
     }
 
-    throw new Error('Unable to initialize any configured Arbitrum RPC endpoint');
+    throw new Error(`Unable to initialize any configured Arbitrum RPC endpoint. Tried: ${initErrors.join(' | ')}`);
   }
 
   get current() {
