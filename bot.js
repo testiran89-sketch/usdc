@@ -93,6 +93,25 @@ function formatUsdc(amount) {
   return ethers.formatUnits(amount, TOKENS.USDC.decimals);
 }
 
+function formatUnitPrice(value) {
+  if (!Number.isFinite(value)) {
+    return 'n/a';
+  }
+  if (value >= 1000) {
+    return value.toFixed(2);
+  }
+  if (value >= 1) {
+    return value.toFixed(4);
+  }
+  if (value >= 0.01) {
+    return value.toFixed(6);
+  }
+  if (value >= 0.0001) {
+    return value.toFixed(8);
+  }
+  return value.toExponential(4);
+}
+
 function supportsColor() {
   return Boolean(process.stdout.isTTY && !process.env.NO_COLOR);
 }
@@ -555,11 +574,11 @@ class ArbitrageBot {
     const bestUnitPrice = this.quoteUnitPrice(best);
     const nextUnitPrice = this.quoteUnitPrice(next);
     const deltaPct = nextUnitPrice > 0 ? ((bestUnitPrice - nextUnitPrice) / nextUnitPrice) * 100 : 0;
+    const pairUnit = `${best.tokenOut.symbol}/${best.tokenIn.symbol}`;
 
-    return `${pairKeyName}: ${this.shortDexName(best.dex)}=${bestUnitPrice.toFixed(4)} | `
-      + `${this.shortDexName(next.dex)}=${nextUnitPrice.toFixed(4)} | `
-      + `Δ=${deltaPct >= 0 ? '+' : ''}${deltaPct.toFixed(2)}% | `
-      + `sample=${formatTokenAmount(best.amountIn, best.tokenIn, 4)} ${best.tokenIn.symbol}`;
+    return `${pairKeyName}: ${this.shortDexName(best.dex)}=${formatUnitPrice(bestUnitPrice)} ${pairUnit} | `
+      + `${this.shortDexName(next.dex)}=${formatUnitPrice(nextUnitPrice)} ${pairUnit} | `
+      + `Δ=${deltaPct >= 0 ? '+' : ''}${deltaPct.toFixed(2)}%`;
   }
 
   logScanSummary({ quotes, directCount, triangularCount, viableCount, bestAttempt, topCandidates = [] }) {
@@ -603,11 +622,11 @@ class ArbitrageBot {
     if (radarLines.length) {
       console.log(renderPanel('ROUTE RADAR', radarLines, '35'));
       if (pairSpreadLines.length) {
-        console.log(renderPanel('PAIR SPREADS', pairSpreadLines.slice(0, 12), '34'));
+        console.log(renderPanel('PAIR COMPARISON (per 1 token)', pairSpreadLines.slice(0, 12), '34'));
       }
     } else if (quoteParts.length) {
       if (pairSpreadLines.length) {
-        console.log(renderPanel('PAIR SPREADS', pairSpreadLines.slice(0, 12), '34'));
+        console.log(renderPanel('PAIR COMPARISON (per 1 token)', pairSpreadLines.slice(0, 12), '34'));
       } else {
         console.log(renderPanel('MARKET SNAPSHOT', chunkLines(quoteParts, 2), '35'));
       }
