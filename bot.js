@@ -490,10 +490,37 @@ class ArbitrageBot {
     return amountToFloat(quote.amountOut, quote.tokenOut.decimals) / amountToFloat(quote.amountIn, quote.tokenIn.decimals);
   }
 
-  comparablePairQuotes(pairQuotes) {
+  bestQuoteForPair(pairQuotesByKey, pairKeyName) {
+    const pairQuotes = pairQuotesByKey.get(pairKeyName) || [];
+    return pairQuotes.slice().sort((a, b) => (a.amountOut > b.amountOut ? -1 : 1))[0] || null;
+  }
+
+  quoteUsdcValue(amount, tokenSymbol, pairQuotesByKey) {
+    if (tokenSymbol === 'USDC') {
+      return amount;
+    }
+    const toUsdc = this.bestQuoteForPair(pairQuotesByKey, `${tokenSymbol}->USDC`);
+    if (!toUsdc || toUsdc.amountOut <= 0n) {
+      return null;
+    }
+    return (amount * toUsdc.amountOut) / toUsdc.amountIn;
+  }
+
+  comparablePairQuotes(pairQuotes, pairQuotesByKey) {
     const pricedQuotes = pairQuotes
-      .map((quote) => ({ quote, unitPrice: this.quoteUnitPrice(quote) }))
+      .map((quote) => {
+        const unitPrice = this.quoteUnitPrice(quote);
+        const inputUsdc = this.quoteUsdcValue(quote.amountIn, quote.tokenIn.symbol, pairQuotesByKey);
+        const outputUsdc = this.quoteUsdcValue(quote.amountOut, quote.tokenOut.symbol, pairQuotesByKey);
+        return { quote, unitPrice, inputUsdc, outputUsdc };
+      })
       .filter((entry) => Number.isFinite(entry.unitPrice) && entry.unitPrice > 0)
+      .filter((entry) => entry.inputUsdc != null && entry.outputUsdc != null && entry.inputUsdc > 0n && entry.outputUsdc > 0n)
+      .filter((entry) => {
+        const minOutput = (entry.inputUsdc * 3n) / 10n;
+        const maxOutput = entry.inputUsdc * 3n;
+        return entry.outputUsdc >= minOutput && entry.outputUsdc <= maxOutput;
+      })
       .sort((a, b) => a.unitPrice - b.unitPrice);
 
     if (pricedQuotes.length < 2) {
@@ -552,7 +579,7 @@ class ArbitrageBot {
   }
 
   formatPairSpread(pairKeyName, pairQuotes, pairQuotesByKey) {
-    const comparableQuotes = this.comparablePairQuotes(pairQuotes);
+    const comparableQuotes = this.comparablePairQuotes(pairQuotes, pairQuotesByKey);
     if (comparableQuotes.length < 2) {
       return null;
     }
