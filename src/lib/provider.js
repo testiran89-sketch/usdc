@@ -7,15 +7,22 @@ class RotatingRpcProvider {
     this.chainId = chainId;
     this.providers = rpcUrls.map((url) => ({
       url,
-      provider: (() => {
-        const request = new ethers.FetchRequest(url);
-        request.timeout = RPC_TIMEOUT_MS;
-        return new ethers.JsonRpcProvider(request, chainId, { staticNetwork: ethers.Network.from(chainId) });
-      })(),
+      provider: null,
       failures: 0,
       lastHealthyAt: 0
     }));
     this.activeIndex = 0;
+  }
+
+  getOrCreateProvider(candidate) {
+    if (!candidate.provider) {
+      const request = new ethers.FetchRequest(candidate.url);
+      request.timeout = RPC_TIMEOUT_MS;
+      candidate.provider = new ethers.JsonRpcProvider(request, this.chainId, {
+        staticNetwork: ethers.Network.from(this.chainId)
+      });
+    }
+    return candidate.provider;
   }
 
   async initialize() {
@@ -27,13 +34,14 @@ class RotatingRpcProvider {
     for (let index = 0; index < this.providers.length; index += 1) {
       const candidate = this.providers[index];
       try {
-        const network = await candidate.provider.getNetwork();
+        const provider = this.getOrCreateProvider(candidate);
+        const network = await provider.getNetwork();
         if (Number(network.chainId) !== this.chainId) {
           throw new Error(`Unexpected chainId ${network.chainId} for ${candidate.url}`);
         }
         candidate.lastHealthyAt = Date.now();
         this.activeIndex = index;
-        return candidate.provider;
+        return provider;
       } catch (error) {
         candidate.failures += 1;
         initErrors.push(`${candidate.url} => ${error.code || error.name || 'ERROR'}: ${error.message}`);
@@ -44,7 +52,7 @@ class RotatingRpcProvider {
   }
 
   get current() {
-    return this.providers[this.activeIndex].provider;
+    return this.getOrCreateProvider(this.providers[this.activeIndex]);
   }
 
   get currentUrl() {
@@ -58,7 +66,8 @@ class RotatingRpcProvider {
       const index = (this.activeIndex + offset) % this.providers.length;
       const candidate = this.providers[index];
       try {
-        const result = await fn(candidate.provider);
+        const provider = this.getOrCreateProvider(candidate);
+        const result = await fn(provider);
         candidate.lastHealthyAt = Date.now();
         this.activeIndex = index;
         return result;
