@@ -1,5 +1,4 @@
 require('dotenv/config');
-const { JsonRpcProvider, WebSocketProvider } = require('ethers');
 const { loadConfig, createTokenMap } = require('./config');
 const { Logger } = require('./utils/logger');
 const { UniswapV3Dex } = require('./dex/uniswapV3');
@@ -10,6 +9,7 @@ const { detectCrossDexArbitrage } = require('./arbitrage/crossDex');
 const { detectTriangularArbitrage } = require('./arbitrage/triangular');
 const { exportOpportunities } = require('./utils/exporter');
 const { renderOpportunity } = require('./utils/format');
+const { createProvider } = require('./providerFactory');
 
 const logger = new Logger();
 
@@ -23,8 +23,7 @@ async function main() {
   const config = await loadConfig(configPath);
   const tokens = createTokenMap(config);
 
-  const httpProvider = new JsonRpcProvider(config.rpc.httpUrl, 42161);
-  const provider = config.rpc.wsUrl ? new WebSocketProvider(config.rpc.wsUrl, 42161) : httpProvider;
+  const provider = await createProvider(config.rpc, logger);
 
   const adapters = [];
   if (config.dexes.uniswapV3.enabled && config.dexes.uniswapV3.quoter) {
@@ -40,7 +39,16 @@ async function main() {
   const quoteEngine = new QuoteEngine(config, tokens, adapters);
   logger.info(`Loaded ${adapters.length} DEX adapters from ${configPath}`);
 
+  let scanInFlight = false;
+  let lastScanError = { message: '', at: 0 };
+
   const runScan = async () => {
+    if (scanInFlight) {
+      logger.warn('Skipping scan tick because previous scan is still running');
+      return;
+    }
+
+    scanInFlight = true;
     try {
       const ethUsdQuotes = await quoteEngine.getPairQuotes({ base: 'WETH', quote: 'USDC', uniswapV3Fee: 500 }, 1000);
       const ethUsd = Math.max(...ethUsdQuotes.quotes.map((quote) => 1 / quote.price));
@@ -74,7 +82,14 @@ async function main() {
 
       await exportOpportunities(top, config.output?.exportJsonPath, config.output?.exportCsvPath);
     } catch (error) {
-      logger.error('Scan iteration failed', error);
+      const message = error?.message ?? String(error);
+      const now = Date.now();
+      if (message !== lastScanError.message || now - lastScanError.at > 30000) {
+        logger.error('Scan iteration failed', error);
+        lastScanError = { message, at: now };
+      }
+    } finally {
+      scanInFlight = false;
     }
   };
 

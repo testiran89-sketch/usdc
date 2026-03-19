@@ -1,29 +1,83 @@
 {
   "rpc": {
     "httpUrl": "https://arb1.arbitrum.io/rpc",
-    "wsUrl": "wss://arb1.arbitrum.io/ws"
+    "pollingIntervalMs": 1000,
+    "enableWs": false,
+    "wsUrl": "wss://arb1.arbitrum.io/ws",
+    "wsHandshakeTimeoutMs": 2500
   },
-  "scanIntervalMs": 2000,
+  "scanIntervalMs": 1500,
   "gasLimitPerSwap": 250000,
   "gasMultiplier": 1.15,
-  "minProfitUsd": 20,
-  "minSpreadPct": 0.5,
-  "tradeSizesUsd": [1000, 10000, 100000],
+  "minProfitUsd": 10,
+  "minSpreadPct": 0.3,
+  "tradeSizesUsd": [
+    1000,
+    5000,
+    10000,
+    25000
+  ],
   "tokens": [
-    { "symbol": "USDC", "address": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831", "decimals": 6 },
-    { "symbol": "WETH", "address": "0x82aF49447D8a07e3bd95BD0d56f35241523fBab1", "decimals": 18 },
-    { "symbol": "WBTC", "address": "0x2f2a2543B76A4166549F7aaB2e75Bef0aefC5B0f", "decimals": 8 },
-    { "symbol": "ARB", "address": "0x912CE59144191C1204E64559FE8253a0e49E6548", "decimals": 18 }
+    {
+      "symbol": "USDC",
+      "address": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
+      "decimals": 6
+    },
+    {
+      "symbol": "WETH",
+      "address": "0x82aF49447D8a07e3bd95BD0d56f35241523fBab1",
+      "decimals": 18
+    },
+    {
+      "symbol": "WBTC",
+      "address": "0x2f2a2543B76A4166549F7aaB2e75Bef0aefC5B0f",
+      "decimals": 8
+    },
+    {
+      "symbol": "ARB",
+      "address": "0x912CE59144191C1204E64559FE8253a0e49E6548",
+      "decimals": 18
+    }
   ],
   "pairs": [
-    { "base": "WETH", "quote": "USDC", "uniswapV3Fee": 500 },
-    { "base": "WBTC", "quote": "USDC", "uniswapV3Fee": 500 },
-    { "base": "ARB", "quote": "USDC", "uniswapV3Fee": 500 },
-    { "base": "ARB", "quote": "WETH", "uniswapV3Fee": 3000 }
+    {
+      "base": "WETH",
+      "quote": "USDC",
+      "uniswapV3Fee": 500
+    },
+    {
+      "base": "WBTC",
+      "quote": "USDC",
+      "uniswapV3Fee": 500
+    },
+    {
+      "base": "ARB",
+      "quote": "USDC",
+      "uniswapV3Fee": 500
+    },
+    {
+      "base": "ARB",
+      "quote": "WETH",
+      "uniswapV3Fee": 3000
+    }
   ],
   "triangularPaths": [
-    { "symbols": ["USDC", "WETH", "ARB", "USDC"] },
-    { "symbols": ["USDC", "WBTC", "WETH", "USDC"] }
+    {
+      "symbols": [
+        "USDC",
+        "WETH",
+        "ARB",
+        "USDC"
+      ]
+    },
+    {
+      "symbols": [
+        "USDC",
+        "WBTC",
+        "WETH",
+        "USDC"
+      ]
+    }
   ],
   "dexes": {
     "uniswapV3": {
@@ -43,6 +97,6 @@
   "output": {
     "exportJsonPath": "./opportunities.json",
     "exportCsvPath": "./opportunities.csv",
-    "maxOpportunities": 20
+    "maxOpportunities": 30
   }
 }

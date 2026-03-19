@@ -30,7 +30,7 @@ This project is **scanner-only**:
 ## Features
 
 - Modular architecture under `src/`
-- Real-time scanning loop (default: every 2 seconds)
+- Real-time scanning loop (default: every 1.5 seconds)
 - Configurable trade sizes, thresholds, RPC endpoints, and tokens
 - Cross-DEX arbitrage detection
 - Triangular arbitrage detection
@@ -68,14 +68,17 @@ Example:
 {
   "rpc": {
     "httpUrl": "https://arb1.arbitrum.io/rpc",
-    "wsUrl": "wss://arb1.arbitrum.io/ws"
+    "pollingIntervalMs": 1000,
+    "enableWs": false,
+    "wsUrl": "wss://arb1.arbitrum.io/ws",
+    "wsHandshakeTimeoutMs": 2500
   },
-  "scanIntervalMs": 2000,
+  "scanIntervalMs": 1500,
   "gasLimitPerSwap": 250000,
   "gasMultiplier": 1.15,
-  "minProfitUsd": 20,
-  "minSpreadPct": 0.5,
-  "tradeSizesUsd": [1000, 10000, 100000]
+  "minProfitUsd": 10,
+  "minSpreadPct": 0.3,
+  "tradeSizesUsd": [1000, 5000, 10000, 25000]
 }
 ```
 
@@ -115,7 +118,7 @@ For each configured cycle, e.g. `USDC -> WETH -> ARB -> USDC`:
 
 ## Running the scanner
 
-With the default config path:
+With the default config path (safe HTTP-first mode):
 
 ```bash
 npm start
@@ -142,7 +145,7 @@ EST_GAS: $4.83
 ## Notes for production usage
 
 - Use a high-quality Arbitrum RPC provider for stable latency.
-- Consider routing RPC reads over WebSocket for lower-latency block updates.
+- WebSocket is disabled by default because many public Arbitrum endpoints return `404` for WS; enable it only with a verified WS endpoint.
 - Increase the pair universe gradually and benchmark RPC saturation.
 - Tune `gasLimitPerSwap` and `gasMultiplier` to match your infrastructure.
 - Extend `src/dex/` if you want to add more Arbitrum-native venues.
@@ -152,3 +155,13 @@ EST_GAS: $4.83
 ```bash
 npm run lint
 ```
+
+
+## Sensible default scanning profile
+
+The bundled config is tuned to surface more opportunities **without turning the scanner into noise**:
+
+- `scanIntervalMs = 1500` for high-frequency but still realistic polling
+- `tradeSizesUsd = [1000, 5000, 10000, 25000]` to cover small-to-mid execution sizes
+- `minProfitUsd = 10` and `minSpreadPct = 0.3` to show more candidates while filtering obvious dust
+- overlap protection prevents a new scan from starting while the previous one is still running
