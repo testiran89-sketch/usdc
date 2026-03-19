@@ -241,6 +241,11 @@ class ArbitrageBot {
     console.log(`Connected to ${this.rpc.currentUrl}`);
     console.log(`Wallet: ${this.wallet.address}`);
     console.log(`Flash loan fee: ${this.state.flashLoanFeeBps} bps`);
+    if (DEBUG_PRICE_LOG) {
+      console.log(`Price debug logging: enabled${DEBUG_PRICE_PAIRS.size ? ` for ${[...DEBUG_PRICE_PAIRS].join(', ')}` : ' for all pairs'}`);
+    } else {
+      console.log('Price debug logging: disabled. Enable with DEBUG_PRICE_LOG=true (optionally set DEBUG_PRICE_PAIRS=USDC->WETH,WETH->USDC,USDC->ARB,ARB->USDC).');
+    }
   }
 
   async start() {
