@@ -1,19 +1,16 @@
 {
-  "name": "arbitrum-usdc-flashloan-arb-bot",
+  "name": "arbitrum-arbitrage-scanner",
   "version": "1.0.0",
   "private": true,
-  "description": "Arbitrum flash-loan arbitrage bot for USDC-centric direct and triangular opportunities.",
-  "main": "bot.js",
+  "description": "High-performance on-chain arbitrage opportunity scanner for Arbitrum DEXs.",
+  "main": "src/index.js",
   "scripts": {
-    "compile": "hardhat compile",
-    "deploy": "hardhat run scripts/deploy.js --network arbitrum",
-    "start": "node bot.js",
-    "lint": "node --check bot.js && node --check scripts/deploy.js && node --check src/config/arbitrum.js && node --check src/lib/abis.js && node --check src/lib/provider.js"
+    "start": "node src/index.js --config ./config/config.json",
+    "scan": "node src/index.js",
+    "lint": "node --check src/index.js && node --check src/config.js && node --check src/providerFactory.js && node --check src/abis.js && node --check src/arbitrage/crossDex.js && node --check src/arbitrage/triangular.js && node --check src/dex/base.js && node --check src/dex/uniswapV3.js && node --check src/dex/v2Router.js && node --check src/pricing/gas.js && node --check src/pricing/quoteEngine.js && node --check src/utils/exporter.js && node --check src/utils/format.js && node --check src/utils/logger.js"
   },
   "dependencies": {
-    "@openzeppelin/contracts": "^5.1.0",
     "dotenv": "^16.4.7",
-    "ethers": "^6.13.5",
-    "hardhat": "^2.22.18"
+    "ethers": "^6.13.5"
   }
 }
