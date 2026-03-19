@@ -313,6 +313,7 @@ class ArbitrageBot {
 
     for (const secondarySymbol of SECONDARY_TOKENS) {
       const tokenA = TOKENS[secondarySymbol];
+      await this.collectSupplementalQuotes(quotes, TOKENS.USDC, tokenA, DIRECT_BASE_SIZES.USDC);
       await this.collectReverseQuotes(quotes, tokenA, TOKENS.USDC, DIRECT_BASE_SIZES[secondarySymbol]);
     }
 
@@ -330,6 +331,18 @@ class ArbitrageBot {
 
   async collectReverseQuotes(quotes, tokenIn, tokenOut, amountIn) {
     await this.collectCrossQuotes(quotes, tokenIn, tokenOut, amountIn);
+  }
+
+  async collectSupplementalQuotes(quotes, tokenIn, tokenOut, amountIn) {
+    const quoteCalls = [
+      this.safeQuoteCurve(tokenIn, tokenOut, amountIn),
+      this.safeQuoteBalancer(tokenIn, tokenOut, amountIn)
+    ];
+
+    const results = (await Promise.all(quoteCalls)).flat().filter(Boolean);
+    for (const quote of results) {
+      this.storeQuote(quotes, quote);
+    }
   }
 
   async collectCrossQuotes(quotes, tokenIn, tokenOut, amountIn) {
