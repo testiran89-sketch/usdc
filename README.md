@@ -1,184 +1,154 @@
-# Arbitrum USDC Flash-Loan Arbitrage Bot
+# Arbitrum Arbitrage Opportunity Scanner
 
-This repository contains a production-oriented USDC-centric flash-loan arbitrage system for Arbitrum using:
+A production-style **on-chain arbitrage scanner** for **Arbitrum**. It reads live quotes from supported DEX routers/quoters and prints **cross-DEX** and **triangular** opportunities to the CLI.
 
-- **Aave v3** for flash loans
-- **Uniswap v3**, **SushiSwap**, **Curve**, and **Balancer** for quoting and execution
-- **Node.js + ethers.js** for off-chain scanning and transaction submission
-- **Solidity** for atomic execution and profit validation
+## Scope
 
-> Important: this is a serious on-chain trading system. Run it only after validating token routes, pool IDs, gas behavior, and revert paths on an Arbitrum fork or test environment.
+This project is **scanner-only**:
 
-## Architecture
+- ✅ Uses on-chain DEX data only
+- ✅ Supports WebSocket + HTTP RPC
+- ✅ Computes spread and estimated USD profit
+- ✅ Includes gas-aware filtering
+- ❌ Does **not** execute trades
+- ❌ Does **not** use flash loans
+- ❌ Does **not** use centralized exchanges
 
-### 1. Smart contract
+## Supported DEXs
 
-`FlashLoanArbitrage.sol` performs the atomic execution layer:
+- Uniswap V3
+- SushiSwap
+- Camelot
 
-- borrows the flash-loan asset from Aave v3
-- applies the approvals required for each swap step
-- executes arbitrary low-level swap calls against supported routers/pools
-- validates that the final balance covers:
-  - flash-loan principal
-  - flash-loan premium
-  - configured minimum profit
-- repays the loan and transfers the profit to the configured receiver
-- supports owner pause/unpause and emergency recovery
+## Supported pairs in the example config
 
-### 2. Bot
+- WETH / USDC
+- WBTC / USDC
+- ARB / USDC
+- ARB / WETH
 
-`bot.js` is the automation layer:
+## Features
 
-- rotates between multiple **free public Arbitrum RPC endpoints**
-- scans every **10 seconds** by default
-- gathers direct and triangular opportunities centered on **USDC**
-- estimates gas cost and flash-loan fees
-- applies slippage limits and minimum profit thresholds
-- signs and sends transactions with the **PRIVATE_KEY** from `.env`
-- supports an **emergency stop** via env flag or sentinel file
+- Modular architecture under `src/`
+- Real-time scanning loop (default: every 2 seconds)
+- Configurable trade sizes, thresholds, RPC endpoints, and tokens
+- Cross-DEX arbitrage detection
+- Triangular arbitrage detection
+- Estimated gas-aware USD profitability
+- JSON + CSV exports
+- Console-first output for operational monitoring
 
-### 3. Config
+## Project structure
 
-`src/config/arbitrum.js` centralizes:
-
-- token metadata
-- protocol addresses
-- public RPC fallback list
-- default trade sizes
-- Uniswap fee tiers
-- curated Balancer pool IDs / asset index mappings for native Arbitrum USDC routes
-- protocol defaults that are already baked into the codebase
-
-## Supported tokens
-
-Primary token:
-- USDC
-
-Secondary tokens:
-- WETH
-- DAI
-- USDT
-
-## Supported opportunity types
-
-### Direct arbitrage
-
-Example:
-
-1. flash-borrow USDC
-2. swap USDC -> WETH on DEX A
-3. swap WETH -> USDC on DEX B
-4. repay Aave
-5. keep the spread
-
-### Triangular arbitrage
-
-Example:
-
-1. flash-borrow USDC
-2. swap USDC -> WETH on DEX A
-3. swap WETH -> DAI on DEX B
-4. swap DAI -> USDC on DEX C
-5. repay Aave
-6. keep the spread
-
-## MEV / risk controls
-
-The bot includes the following safeguards:
-
-- **slippage protection** via `amountOutMinimum`
-- **atomic settlement** via flash-loan callback execution
-- **profit validation on-chain** before repayment approval
-- **minimum profit threshold** via `MIN_PROFIT_USDC`
-- **maximum trade size** via `MAX_TRADE_SIZE_USDC`
-- **emergency stop** via `.emergency-stop` file or `EMERGENCY_STOP=true`
-- **public RPC fallback** to avoid a single endpoint dependency
-
-### Private transaction submission
-
-Public free RPC endpoints generally broadcast to the public mempool. If you have access to a private relay/builder that supports Arbitrum private delivery, you can extend `executeOpportunity()` to submit through that endpoint instead of `eth_sendRawTransaction`.
+```text
+src/
+  arbitrage/
+  dex/
+  pricing/
+  utils/
+config/
+  config.json
+```
 
 ## Installation
 
 ```bash
 npm install
-cp .env.example .env
 ```
 
-Fill in at minimum:
+> If your environment already has the dependencies vendored, you can run the scanner immediately.
 
-- `PRIVATE_KEY`
-- `ARBITRAGE_CONTRACT` after deployment
+## Configuration
 
-You do **not** need to know Aave / pool / router addresses manually; they are already prefilled in the repository defaults.
+Edit `config/config.json`.
 
-## Deploy the contract
+Example:
 
-```bash
-npx hardhat compile
-npx hardhat run scripts/deploy.js --network arbitrum
+```json
+{
+  "rpc": {
+    "httpUrl": "https://arb1.arbitrum.io/rpc",
+    "wsUrl": "wss://arb1.arbitrum.io/ws"
+  },
+  "scanIntervalMs": 2000,
+  "gasLimitPerSwap": 250000,
+  "gasMultiplier": 1.15,
+  "minProfitUsd": 20,
+  "minSpreadPct": 0.5,
+  "tradeSizesUsd": [1000, 10000, 100000]
+}
 ```
 
-Or use the npm script:
+You can also:
 
-```bash
-npm run deploy
-```
+- disable individual DEX adapters
+- add/remove token pairs
+- add/remove triangular routes
+- change export output paths
 
-After deployment, copy the deployed address into:
+## How it works
 
-```bash
-ARBITRAGE_CONTRACT=0x...
-```
+### 1. Quote collection
 
-## Run the bot
+- **Uniswap V3** quotes are fetched from the **Quoter** contract.
+- **SushiSwap** and **Camelot** quotes are fetched via `getAmountsOut` on router-style contracts.
+- Token decimals are normalized before price/profit calculations.
 
-```bash
-node bot.js
-```
+### 2. Cross-DEX arbitrage
 
-Or:
+For each configured pair and trade size:
+
+1. Quote `quoteToken -> baseToken` on each DEX
+2. Treat the best route as the synthetic buy leg
+3. Re-quote `baseToken -> quoteToken` on other DEXs
+4. Subtract estimated gas cost
+5. Keep only opportunities above configured spread/profit thresholds
+
+### 3. Triangular arbitrage
+
+For each configured cycle, e.g. `USDC -> WETH -> ARB -> USDC`:
+
+1. Quote hop 1
+2. Feed output into hop 2
+3. Feed output into hop 3
+4. Compute cycle spread and net estimated USD profit after gas
+
+## Running the scanner
+
+With the default config path:
 
 ```bash
 npm start
 ```
 
-## Important note about pool addresses
+With a custom config file:
 
-You said you do not have pool addresses and only want to provide:
+```bash
+node src/index.js --config ./config/config.json
+```
 
-1. wallet private key
-2. deployed contract address
+## CLI output example
 
-The repository is now aligned with that workflow:
+```text
+[OPPORTUNITY]
+PAIR: WETH/USDC
+BUY: UniswapV3 @ 1823.210000
+SELL: SushiSwap @ 1831.450000
+SPREAD: 0.45%
+EST_PROFIT (10,000): $82.12
+EST_GAS: $4.83
+```
 
-- `.env.example` only expects those two fields from you in practice
-- Aave and RPC defaults are already set
-- no Curve/Balancer pool IDs are required in `.env`
-- the repository already includes native-USDC Balancer routes for `USDC/WETH` and `USDC/USDT`
+## Notes for production usage
 
-If later you want to widen the route universe, you can still edit `src/config/arbitrum.js`, but it is no longer required for first run.
+- Use a high-quality Arbitrum RPC provider for stable latency.
+- Consider routing RPC reads over WebSocket for lower-latency block updates.
+- Increase the pair universe gradually and benchmark RPC saturation.
+- Tune `gasLimitPerSwap` and `gasMultiplier` to match your infrastructure.
+- Extend `src/dex/` if you want to add more Arbitrum-native venues.
 
-## Operational notes
+## Validation
 
-- Always test on a **forked Arbitrum environment** before production capital.
-- Tune the trade sizes and slippage thresholds per pair.
-- Keep a reserve of ETH on Arbitrum for gas.
-- Reassess pool configuration periodically because liquidity moves.
-- Add observability (Prometheus/Telegram/Discord/webhooks) before production deployment.
-
-## Quick start
-
-1. `npm install`
-2. `cp .env.example .env`
-3. put your `PRIVATE_KEY`
-4. deploy the contract
-5. put your `ARBITRAGE_CONTRACT`
-6. run `node bot.js`
-
-## Security warnings
-
-- Do **not** commit your real `.env` file.
-- Do **not** run this with large capital before thorough fork testing.
-- Public mempool execution is MEV-sensitive.
-- Smart-contract and execution logic should be independently audited before meaningful capital deployment.
+```bash
+npm run lint
+```

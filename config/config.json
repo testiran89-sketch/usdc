@@ -1,0 +1,48 @@
+{
+  "rpc": {
+    "httpUrl": "https://arb1.arbitrum.io/rpc",
+    "wsUrl": "wss://arb1.arbitrum.io/ws"
+  },
+  "scanIntervalMs": 2000,
+  "gasLimitPerSwap": 250000,
+  "gasMultiplier": 1.15,
+  "minProfitUsd": 20,
+  "minSpreadPct": 0.5,
+  "tradeSizesUsd": [1000, 10000, 100000],
+  "tokens": [
+    { "symbol": "USDC", "address": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831", "decimals": 6 },
+    { "symbol": "WETH", "address": "0x82aF49447D8a07e3bd95BD0d56f35241523fBab1", "decimals": 18 },
+    { "symbol": "WBTC", "address": "0x2f2a2543B76A4166549F7aaB2e75Bef0aefC5B0f", "decimals": 8 },
+    { "symbol": "ARB", "address": "0x912CE59144191C1204E64559FE8253a0e49E6548", "decimals": 18 }
+  ],
+  "pairs": [
+    { "base": "WETH", "quote": "USDC", "uniswapV3Fee": 500 },
+    { "base": "WBTC", "quote": "USDC", "uniswapV3Fee": 500 },
+    { "base": "ARB", "quote": "USDC", "uniswapV3Fee": 500 },
+    { "base": "ARB", "quote": "WETH", "uniswapV3Fee": 3000 }
+  ],
+  "triangularPaths": [
+    { "symbols": ["USDC", "WETH", "ARB", "USDC"] },
+    { "symbols": ["USDC", "WBTC", "WETH", "USDC"] }
+  ],
+  "dexes": {
+    "uniswapV3": {
+      "enabled": true,
+      "router": "0xE592427A0AEce92De3Edee1F18E0157C05861564",
+      "quoter": "0x61fFE014bA17989E743c5F6cB21bF9697530B21e"
+    },
+    "sushiSwap": {
+      "enabled": true,
+      "router": "0x1b02dA8Cb0d097eB8D57A175b88c7D8b47997506"
+    },
+    "camelot": {
+      "enabled": true,
+      "router": "0xc873fEcbd354f5A56E00E710B90EF4201db2448d"
+    }
+  },
+  "output": {
+    "exportJsonPath": "./opportunities.json",
+    "exportCsvPath": "./opportunities.csv",
+    "maxOpportunities": 20
+  }
+}
