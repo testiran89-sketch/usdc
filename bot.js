@@ -71,6 +71,10 @@ function normalizeAmountOut(value) {
   return null;
 }
 
+function formatTokenAmount(amount, token, precision = 6) {
+  return Number(ethers.formatUnits(amount, token.decimals)).toFixed(precision);
+}
+
 function uniquePush(map, key, value) {
   if (!map.has(key)) {
     map.set(key, value);
@@ -190,10 +194,11 @@ class ArbitrageBot {
   async scanAll() {
     const marketQuotes = await this.collectQuotes();
     this.latestQuotes = marketQuotes;
-    const opportunities = [];
+    const directOpportunities = this.findDirectOpportunities(marketQuotes);
+    const triangularOpportunities = this.findTriangularOpportunities(marketQuotes);
+    const opportunities = [...directOpportunities, ...triangularOpportunities];
 
-    opportunities.push(...this.findDirectOpportunities(marketQuotes));
-    opportunities.push(...this.findTriangularOpportunities(marketQuotes));
+    let bestAttempt = null;
 
     const viable = [];
     for (const opportunity of opportunities) {
@@ -202,10 +207,21 @@ class ArbitrageBot {
       const flashLoanFee = (opportunity.loanAmount * this.state.flashLoanFeeBps) / 10_000n;
       opportunity.flashLoanFee = flashLoanFee;
       opportunity.netProfit = opportunity.expectedProfit - gasCost - flashLoanFee;
+      if (!bestAttempt || opportunity.netProfit > bestAttempt.netProfit) {
+        bestAttempt = opportunity;
+      }
       if (opportunity.netProfit > MIN_PROFIT_USDC && opportunity.netProfit > 0n) {
         viable.push(opportunity);
       }
     }
+
+    this.logScanSummary({
+      quotes: marketQuotes,
+      directCount: directOpportunities.length,
+      triangularCount: triangularOpportunities.length,
+      viableCount: viable.length,
+      bestAttempt
+    });
 
     return viable;
   }
@@ -363,6 +379,46 @@ class ArbitrageBot {
 
   getQuote(quotes, dex, tokenInSymbol, tokenOutSymbol) {
     return quotes.get(`${dex}:${tokenInSymbol}:${tokenOutSymbol}`);
+  }
+
+  logScanSummary({ quotes, directCount, triangularCount, viableCount, bestAttempt }) {
+    const dexCounts = {};
+    const bestByPair = new Map();
+
+    for (const quote of quotes.values()) {
+      dexCounts[quote.dex] = (dexCounts[quote.dex] || 0) + 1;
+      const key = `${quote.tokenIn.symbol}->${quote.tokenOut.symbol}`;
+      const existing = bestByPair.get(key);
+      if (!existing || quote.amountOut > existing.amountOut) {
+        bestByPair.set(key, quote);
+      }
+    }
+
+    const quoteParts = [...bestByPair.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([pair, quote]) => (
+        `${pair}=${quote.dex}:${formatTokenAmount(quote.amountOut, quote.tokenOut, 4)} ${quote.tokenOut.symbol}`
+      ));
+
+    console.log(
+      `[scan] quotes=${quotes.size} dex=${JSON.stringify(dexCounts)} `
+      + `direct=${directCount} triangular=${triangularCount} viable=${viableCount}`
+    );
+
+    if (quoteParts.length) {
+      console.log(`[quotes] ${quoteParts.join(' | ')}`);
+    }
+
+    if (bestAttempt) {
+      console.log(
+        `[candidate] ${bestAttempt.id} gross=${formatTokenAmount(bestAttempt.expectedProfit, TOKENS.USDC, 6)} `
+        + `gas=${formatTokenAmount(bestAttempt.estimatedGasCost, TOKENS.USDC, 6)} `
+        + `flashFee=${formatTokenAmount(bestAttempt.flashLoanFee, TOKENS.USDC, 6)} `
+        + `net=${formatTokenAmount(bestAttempt.netProfit, TOKENS.USDC, 6)} USDC`
+      );
+    } else {
+      console.log('[candidate] none');
+    }
   }
 
   findDirectOpportunities(quotes) {
