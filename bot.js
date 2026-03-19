@@ -544,45 +544,6 @@ class ArbitrageBot {
       .map((entry) => entry.quote);
   }
 
-  projectSpreadValueUsdc(bestQuote, compareQuote, pairQuotesByKey) {
-    const tokenInSymbol = bestQuote.tokenIn.symbol;
-    const tokenOutSymbol = bestQuote.tokenOut.symbol;
-
-    if (bestQuote.amountOut <= compareQuote.amountOut) {
-      return null;
-    }
-
-    let displayAmountIn = DISPLAY_LOAN_USDC;
-    if (tokenInSymbol !== 'USDC') {
-      const tokenInToUsdc = (pairQuotesByKey.get(`${tokenInSymbol}->USDC`) || [])
-        .slice()
-        .sort((a, b) => (a.amountOut > b.amountOut ? -1 : 1))[0];
-      if (!tokenInToUsdc || tokenInToUsdc.amountOut <= 0n) {
-        return null;
-      }
-      displayAmountIn = (DISPLAY_LOAN_USDC * tokenInToUsdc.amountIn) / tokenInToUsdc.amountOut;
-    }
-
-    const bestOut = (displayAmountIn * bestQuote.amountOut) / bestQuote.amountIn;
-    const compareOut = (displayAmountIn * compareQuote.amountOut) / compareQuote.amountIn;
-    if (bestOut <= compareOut) {
-      return null;
-    }
-
-    const tokenOutSpread = bestOut - compareOut;
-    if (tokenOutSymbol === 'USDC') {
-      return tokenOutSpread;
-    }
-
-    const tokenOutToUsdc = (pairQuotesByKey.get(`${tokenOutSymbol}->USDC`) || [])
-      .slice()
-      .sort((a, b) => (a.amountOut > b.amountOut ? -1 : 1))[0];
-    if (!tokenOutToUsdc || tokenOutToUsdc.amountOut <= 0n) {
-      return null;
-    }
-    return (tokenOutSpread * tokenOutToUsdc.amountOut) / tokenOutToUsdc.amountIn;
-  }
-
   formatPairSpread(pairKeyName, pairQuotes, pairQuotesByKey) {
     const comparableQuotes = this.comparablePairQuotes(pairQuotes, pairQuotesByKey);
     if (comparableQuotes.length < 2) {
@@ -594,13 +555,11 @@ class ArbitrageBot {
     const bestUnitPrice = this.quoteUnitPrice(best);
     const nextUnitPrice = this.quoteUnitPrice(next);
     const deltaPct = nextUnitPrice > 0 ? ((bestUnitPrice - nextUnitPrice) / nextUnitPrice) * 100 : 0;
-    const projectedSpreadUsdc = this.projectSpreadValueUsdc(best, next, pairQuotesByKey);
-    const projectedFinal = projectedSpreadUsdc == null ? null : DISPLAY_LOAN_USDC + projectedSpreadUsdc;
 
     return `${pairKeyName}: ${this.shortDexName(best.dex)}=${bestUnitPrice.toFixed(4)} | `
       + `${this.shortDexName(next.dex)}=${nextUnitPrice.toFixed(4)} | `
       + `Δ=${deltaPct >= 0 ? '+' : ''}${deltaPct.toFixed(2)}% | `
-      + `100k raw=>${projectedFinal == null ? 'n/a' : `${formatUsdc(projectedFinal)} USDC`}`;
+      + `sample=${formatTokenAmount(best.amountIn, best.tokenIn, 4)} ${best.tokenIn.symbol}`;
   }
 
   logScanSummary({ quotes, directCount, triangularCount, viableCount, bestAttempt, topCandidates = [] }) {
