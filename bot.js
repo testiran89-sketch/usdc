@@ -275,6 +275,7 @@ class ArbitrageBot {
     this.latestQuotes = marketQuotes;
     const directOpportunities = this.findDirectOpportunities(marketQuotes);
     const triangularOpportunities = this.findTriangularOpportunities(marketQuotes);
+    const directDiagnostics = this.buildDirectDiagnostics(marketQuotes);
     const opportunities = [...directOpportunities, ...triangularOpportunities];
 
     let bestAttempt = null;
@@ -300,6 +301,7 @@ class ArbitrageBot {
       triangularCount: triangularOpportunities.length,
       viableCount: viable.length,
       bestAttempt,
+      directDiagnostics,
       topCandidates: opportunities
         .slice()
         .sort((a, b) => (a.netProfit > b.netProfit ? -1 : 1))
@@ -581,7 +583,19 @@ class ArbitrageBot {
       + `Δ=${deltaPct >= 0 ? '+' : ''}${deltaPct.toFixed(2)}%`;
   }
 
-  logScanSummary({ quotes, directCount, triangularCount, viableCount, bestAttempt, topCandidates = [] }) {
+  formatDirectDiagnostic(diagnostic) {
+    const projectedGrossReturn = diagnostic.loanAmount > 0n
+      ? (diagnostic.grossReturn * DISPLAY_LOAN_USDC) / diagnostic.loanAmount
+      : 0n;
+    const projectedFlashFee = (DISPLAY_LOAN_USDC * this.state.flashLoanFeeBps) / 10_000n;
+    const projectedGas = ethers.parseUnits('0.75', TOKENS.USDC.decimals);
+    const projectedFinal = projectedGrossReturn - projectedFlashFee - projectedGas;
+
+    return `USDC->${diagnostic.pair}(${this.shortDexName(diagnostic.buyDex)})->USDC(${this.shortDexName(diagnostic.sellDex)}): `
+      + `100k => ${formatUsdc(projectedFinal)} USDC after flash fee/gas`;
+  }
+
+  logScanSummary({ quotes, directCount, triangularCount, viableCount, bestAttempt, directDiagnostics = [], topCandidates = [] }) {
     const dexCounts = {};
     const bestByPair = new Map();
     const pairQuotesByKey = new Map();
@@ -630,6 +644,10 @@ class ArbitrageBot {
       } else {
         console.log(renderPanel('MARKET SNAPSHOT', chunkLines(quoteParts, 2), '35'));
       }
+    }
+
+    if (!bestAttempt && directDiagnostics.length) {
+      console.log(renderPanel('BEST ROUNDTRIPS', directDiagnostics.map((entry) => this.formatDirectDiagnostic(entry)), '33'));
     }
 
     if (bestAttempt) {
@@ -686,6 +704,39 @@ class ArbitrageBot {
     }
 
     return opportunities;
+  }
+
+  buildDirectDiagnostics(quotes) {
+    const dexes = ['uniswapV3', ...this.v2Dexes.map((dex) => dex.name), 'curve', 'balancer'];
+    const diagnostics = [];
+
+    for (const secondarySymbol of SECONDARY_TOKENS) {
+      for (const buyDex of dexes) {
+        for (const sellDex of dexes) {
+          if (buyDex === sellDex) {
+            continue;
+          }
+          const firstLeg = this.getQuote(quotes, buyDex, 'USDC', secondarySymbol);
+          const secondLeg = this.getQuote(quotes, sellDex, secondarySymbol, 'USDC');
+          if (!firstLeg || !secondLeg) {
+            continue;
+          }
+
+          const grossReturn = (firstLeg.amountOut * secondLeg.amountOut) / secondLeg.amountIn;
+          diagnostics.push({
+            pair: secondarySymbol,
+            buyDex,
+            sellDex,
+            loanAmount: firstLeg.amountIn,
+            grossReturn
+          });
+        }
+      }
+    }
+
+    return diagnostics
+      .sort((a, b) => (a.grossReturn > b.grossReturn ? -1 : 1))
+      .slice(0, 6);
   }
 
   findTriangularOpportunities(quotes) {
