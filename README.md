@@ -46,6 +46,7 @@ This repository contains a production-oriented USDC-centric flash-loan arbitrage
 - public RPC fallback list
 - default trade sizes
 - Uniswap fee tiers
+- curated Balancer pool IDs / asset index mappings for native Arbitrum USDC routes
 - protocol defaults that are already baked into the codebase
 
 ## Supported tokens
@@ -154,6 +155,7 @@ The repository is now aligned with that workflow:
 - `.env.example` only expects those two fields from you in practice
 - Aave and RPC defaults are already set
 - no Curve/Balancer pool IDs are required in `.env`
+- the repository already includes native-USDC Balancer routes for `USDC/WETH` and `USDC/USDT`
 
 If later you want to widen the route universe, you can still edit `src/config/arbitrum.js`, but it is no longer required for first run.
 

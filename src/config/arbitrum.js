@@ -59,7 +59,28 @@ const UNISWAP_V3_FEES = {
 
 const CURVE_POOLS = [];
 
-const BALANCER_POOLS = [];
+const BALANCER_POOLS = [
+  {
+    name: 'Gyroscope ECLP WETH/USDC',
+    address: addr('0x2c045c222bd603b9f1d6fb8af077d705efe83d4a'),
+    poolId: '0x2c045c222bd603b9f1d6fb8af077d705efe83d4a0002000000000000000005e6',
+    assets: [TOKENS.WETH.address, TOKENS.USDC.address],
+    pairs: {
+      'WETH-USDC': { assetInIndex: 0, assetOutIndex: 1 },
+      'USDC-WETH': { assetInIndex: 1, assetOutIndex: 0 }
+    }
+  },
+  {
+    name: 'Gyroscope ECLP USDT/USDC',
+    address: addr('0xb6911f80b1122f41c19b299a69dca07100452bf9'),
+    poolId: '0xb6911f80b1122f41c19b299a69dca07100452bf90002000000000000000004ba',
+    assets: [TOKENS.USDT.address, TOKENS.USDC.address],
+    pairs: {
+      'USDT-USDC': { assetInIndex: 0, assetOutIndex: 1 },
+      'USDC-USDT': { assetInIndex: 1, assetOutIndex: 0 }
+    }
+  }
+];
 
 module.exports = {
   TOKENS,
