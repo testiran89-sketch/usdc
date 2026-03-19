@@ -34,6 +34,13 @@ const GAS_LIMIT_BUFFER_BPS = Number(process.env.GAS_LIMIT_BUFFER_BPS || 12000);
 const EMERGENCY_STOP_FILE = process.env.EMERGENCY_STOP_FILE || '.emergency-stop';
 const DISPLAY_LOAN_USDC = ethers.parseUnits(process.env.DISPLAY_LOAN_USDC || '100000', TOKENS.USDC.decimals);
 const PAIR_SPREAD_SANITY_FACTOR = Number(process.env.PAIR_SPREAD_SANITY_FACTOR || 5);
+const DEBUG_PRICE_LOG = String(process.env.DEBUG_PRICE_LOG || '').toLowerCase() === 'true';
+const DEBUG_PRICE_PAIRS = new Set(
+  (process.env.DEBUG_PRICE_PAIRS || '')
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+);
 
 const TOKEN_LIST = Object.values(TOKENS);
 const TOKEN_BY_ADDRESS = Object.fromEntries(TOKEN_LIST.map((token) => [token.address.toLowerCase(), token]));
@@ -155,6 +162,16 @@ function uniquePaths(paths) {
     }
   }
   return result;
+}
+
+function shouldDebugPair(tokenInSymbol, tokenOutSymbol) {
+  if (!DEBUG_PRICE_LOG) {
+    return false;
+  }
+  if (!DEBUG_PRICE_PAIRS.size) {
+    return true;
+  }
+  return DEBUG_PRICE_PAIRS.has(`${tokenInSymbol}->${tokenOutSymbol}`);
 }
 
 class ArbitrageBot {
@@ -474,6 +491,17 @@ class ArbitrageBot {
     const existing = quotes.get(key);
     if (!existing || quote.amountOut > existing.amountOut) {
       quotes.set(key, quote);
+      if (shouldDebugPair(quote.tokenIn.symbol, quote.tokenOut.symbol)) {
+        const routePath = quote.routeData?.path
+          ? quote.routeData.path.map((address) => TOKEN_BY_ADDRESS[address.toLowerCase()]?.symbol || address).join('>')
+          : quote.routeData?.pool?.name || 'direct';
+        console.log(
+          `[price-debug] accepted pair=${quote.tokenIn.symbol}->${quote.tokenOut.symbol} `
+          + `dex=${quote.dex} amountIn=${formatTokenAmount(quote.amountIn, quote.tokenIn, 6)} ${quote.tokenIn.symbol} `
+          + `amountOut=${formatTokenAmount(quote.amountOut, quote.tokenOut, 6)} ${quote.tokenOut.symbol} `
+          + `path=${routePath}`
+        );
+      }
     }
   }
 
@@ -746,6 +774,17 @@ class ArbitrageBot {
           }
 
           const grossReturn = (firstLeg.amountOut * secondLeg.amountOut) / secondLeg.amountIn;
+          if (shouldDebugPair('USDC', secondarySymbol) || shouldDebugPair(secondarySymbol, 'USDC')) {
+            console.log(
+              `[price-debug] direct-check pair=USDC->${secondarySymbol}->USDC `
+              + `buyDex=${buyDex} sellDex=${sellDex} `
+              + `firstLeg=${formatTokenAmount(firstLeg.amountIn, firstLeg.tokenIn, 6)} ${firstLeg.tokenIn.symbol}`
+              + `->${formatTokenAmount(firstLeg.amountOut, firstLeg.tokenOut, 6)} ${firstLeg.tokenOut.symbol} `
+              + `secondLeg=${formatTokenAmount(secondLeg.amountIn, secondLeg.tokenIn, 6)} ${secondLeg.tokenIn.symbol}`
+              + `->${formatTokenAmount(secondLeg.amountOut, secondLeg.tokenOut, 6)} ${secondLeg.tokenOut.symbol} `
+              + `grossReturn=${formatTokenAmount(grossReturn, TOKENS.USDC, 6)} USDC`
+            );
+          }
           diagnostics.push({
             pair: secondarySymbol,
             buyDex,
