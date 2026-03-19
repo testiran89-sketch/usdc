@@ -50,6 +50,27 @@ function applyBps(amount, bps, subtract = true) {
   return (amount * numerator) / 10_000n;
 }
 
+function normalizeAmountOut(value) {
+  if (value == null) {
+    return null;
+  }
+  if (typeof value === 'bigint') {
+    return value;
+  }
+  if (Array.isArray(value)) {
+    return normalizeAmountOut(value[0]);
+  }
+  if (typeof value === 'object') {
+    if ('amountOut' in value && value.amountOut != null) {
+      return normalizeAmountOut(value.amountOut);
+    }
+    if (0 in value && value[0] != null) {
+      return normalizeAmountOut(value[0]);
+    }
+  }
+  return null;
+}
+
 function uniquePush(map, key, value) {
   if (!map.has(key)) {
     map.set(key, value);
@@ -242,13 +263,13 @@ class ArbitrageBot {
       }
       const meta = decoders[index];
       if (meta.type === 'uniswap') {
-        const [decoded] = this.uniswapQuoter.interface.decodeFunctionResult('quoteExactInputSingle', response.returnData);
+        const decoded = this.uniswapQuoter.interface.decodeFunctionResult('quoteExactInputSingle', response.returnData);
         this.storeQuote(quotes, this.makeQuote({
           dex: 'uniswapV3',
           tokenIn: meta.tokenIn,
           tokenOut: meta.tokenOut,
           amountIn: meta.amountIn,
-          amountOut: decoded.amountOut,
+          amountOut: normalizeAmountOut(decoded),
           routeData: { fee: meta.fee }
         }));
       } else if (meta.type === 'sushi') {
@@ -314,19 +335,26 @@ class ArbitrageBot {
   }
 
   storeQuote(quotes, quote) {
+    if (!quote) {
+      return;
+    }
     const key = `${quote.dex}:${quote.tokenIn.symbol}:${quote.tokenOut.symbol}`;
     quotes.set(key, quote);
   }
 
   makeQuote({ dex, tokenIn, tokenOut, amountIn, amountOut, routeData }) {
-    const idealPrice = (amountToFloat(amountOut, tokenOut.decimals) / amountToFloat(amountIn, tokenIn.decimals));
+    const normalizedAmountOut = normalizeAmountOut(amountOut);
+    if (normalizedAmountOut == null || normalizedAmountOut <= 0n) {
+      return null;
+    }
+    const idealPrice = (amountToFloat(normalizedAmountOut, tokenOut.decimals) / amountToFloat(amountIn, tokenIn.decimals));
     const stressedIn = applyBps(amountIn, SIMULATION_SLIPPAGE_BPS, false);
     return {
       dex,
       tokenIn,
       tokenOut,
       amountIn,
-      amountOut,
+      amountOut: normalizedAmountOut,
       routeData,
       idealPrice,
       stressedIn
@@ -579,7 +607,7 @@ class ArbitrageBot {
         tokenIn,
         tokenOut,
         amountIn,
-        amountOut: result.amountOut,
+        amountOut: normalizeAmountOut(result),
         routeData: { fee }
       })];
     } catch {
