@@ -89,6 +89,10 @@ function formatSignedUsdc(amount) {
   return `${prefix}${ethers.formatUnits(absolute, TOKENS.USDC.decimals)}`;
 }
 
+function formatUsdc(amount) {
+  return ethers.formatUnits(amount, TOKENS.USDC.decimals);
+}
+
 function supportsColor() {
   return Boolean(process.stdout.isTTY && !process.env.NO_COLOR);
 }
@@ -482,8 +486,9 @@ class ArbitrageBot {
       ? ((opportunity.flashLoanFee || 0n) * DISPLAY_LOAN_USDC) / opportunity.loanAmount
       : 0n;
     const projectedNet = projectedGross - projectedFlashFee - (opportunity.estimatedGasCost || 0n);
+    const projectedFinal = DISPLAY_LOAN_USDC + projectedNet;
     const spreadPrefix = spreadBps >= 0 ? '+' : '';
-    return `${route}= ${spreadPrefix}${spreadBps.toFixed(2)}% (100k ≈ gross ${formatSignedUsdc(projectedGross)} / net ${formatSignedUsdc(projectedNet)} USDC)`;
+    return `${route}= ${spreadPrefix}${spreadBps.toFixed(2)}% (100k => ${formatUsdc(projectedFinal)} USDC after fees)`;
   }
 
   quoteUnitPrice(quote) {
@@ -590,11 +595,12 @@ class ArbitrageBot {
     const nextUnitPrice = this.quoteUnitPrice(next);
     const deltaPct = nextUnitPrice > 0 ? ((bestUnitPrice - nextUnitPrice) / nextUnitPrice) * 100 : 0;
     const projectedSpreadUsdc = this.projectSpreadValueUsdc(best, next, pairQuotesByKey);
+    const projectedFinal = projectedSpreadUsdc == null ? null : DISPLAY_LOAN_USDC + projectedSpreadUsdc;
 
     return `${pairKeyName}: ${this.shortDexName(best.dex)}=${bestUnitPrice.toFixed(4)} | `
       + `${this.shortDexName(next.dex)}=${nextUnitPrice.toFixed(4)} | `
       + `Δ=${deltaPct >= 0 ? '+' : ''}${deltaPct.toFixed(2)}% | `
-      + `100k spread≈${projectedSpreadUsdc == null ? 'n/a' : `${formatSignedUsdc(projectedSpreadUsdc)} USDC`}`;
+      + `100k raw=>${projectedFinal == null ? 'n/a' : `${formatUsdc(projectedFinal)} USDC`}`;
   }
 
   logScanSummary({ quotes, directCount, triangularCount, viableCount, bestAttempt, topCandidates = [] }) {
