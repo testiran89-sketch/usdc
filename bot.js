@@ -33,6 +33,7 @@ const DEADLINE_SECONDS = Number(process.env.DEADLINE_SECONDS || 90);
 const GAS_LIMIT_BUFFER_BPS = Number(process.env.GAS_LIMIT_BUFFER_BPS || 12000);
 const EMERGENCY_STOP_FILE = process.env.EMERGENCY_STOP_FILE || '.emergency-stop';
 const DISPLAY_LOAN_USDC = ethers.parseUnits(process.env.DISPLAY_LOAN_USDC || '100000', TOKENS.USDC.decimals);
+const PAIR_SPREAD_SANITY_FACTOR = Number(process.env.PAIR_SPREAD_SANITY_FACTOR || 5);
 
 const TOKEN_LIST = Object.values(TOKENS);
 const TOKEN_BY_ADDRESS = Object.fromEntries(TOKEN_LIST.map((token) => [token.address.toLowerCase(), token]));
@@ -489,6 +490,28 @@ class ArbitrageBot {
     return amountToFloat(quote.amountOut, quote.tokenOut.decimals) / amountToFloat(quote.amountIn, quote.tokenIn.decimals);
   }
 
+  comparablePairQuotes(pairQuotes) {
+    const pricedQuotes = pairQuotes
+      .map((quote) => ({ quote, unitPrice: this.quoteUnitPrice(quote) }))
+      .filter((entry) => Number.isFinite(entry.unitPrice) && entry.unitPrice > 0)
+      .sort((a, b) => a.unitPrice - b.unitPrice);
+
+    if (pricedQuotes.length < 2) {
+      return [];
+    }
+
+    const middle = Math.floor(pricedQuotes.length / 2);
+    const median = pricedQuotes.length % 2 === 1
+      ? pricedQuotes[middle].unitPrice
+      : (pricedQuotes[middle - 1].unitPrice + pricedQuotes[middle].unitPrice) / 2;
+    const minAllowed = median / PAIR_SPREAD_SANITY_FACTOR;
+    const maxAllowed = median * PAIR_SPREAD_SANITY_FACTOR;
+
+    return pricedQuotes
+      .filter((entry) => entry.unitPrice >= minAllowed && entry.unitPrice <= maxAllowed)
+      .map((entry) => entry.quote);
+  }
+
   projectSpreadValueUsdc(bestQuote, compareQuote, pairQuotesByKey) {
     const tokenInSymbol = bestQuote.tokenIn.symbol;
     const tokenOutSymbol = bestQuote.tokenOut.symbol;
@@ -529,10 +552,11 @@ class ArbitrageBot {
   }
 
   formatPairSpread(pairKeyName, pairQuotes, pairQuotesByKey) {
-    if (pairQuotes.length < 2) {
+    const comparableQuotes = this.comparablePairQuotes(pairQuotes);
+    if (comparableQuotes.length < 2) {
       return null;
     }
-    const ordered = pairQuotes.slice().sort((a, b) => (a.amountOut > b.amountOut ? -1 : 1));
+    const ordered = comparableQuotes.slice().sort((a, b) => (a.amountOut > b.amountOut ? -1 : 1));
     const best = ordered[0];
     const next = ordered[1];
     const bestUnitPrice = this.quoteUnitPrice(best);
