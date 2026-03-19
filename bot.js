@@ -485,14 +485,79 @@ class ArbitrageBot {
     return `${route}= ${spreadPrefix}${spreadBps.toFixed(2)}% (100k ≈ gross ${formatSignedUsdc(projectedGross)} / net ${formatSignedUsdc(projectedNet)} USDC)`;
   }
 
+  quoteUnitPrice(quote) {
+    return amountToFloat(quote.amountOut, quote.tokenOut.decimals) / amountToFloat(quote.amountIn, quote.tokenIn.decimals);
+  }
+
+  projectSpreadValueUsdc(bestQuote, compareQuote, pairQuotesByKey) {
+    const tokenInSymbol = bestQuote.tokenIn.symbol;
+    const tokenOutSymbol = bestQuote.tokenOut.symbol;
+
+    if (bestQuote.amountOut <= compareQuote.amountOut) {
+      return null;
+    }
+
+    let displayAmountIn = DISPLAY_LOAN_USDC;
+    if (tokenInSymbol !== 'USDC') {
+      const tokenInToUsdc = (pairQuotesByKey.get(`${tokenInSymbol}->USDC`) || [])
+        .slice()
+        .sort((a, b) => (a.amountOut > b.amountOut ? -1 : 1))[0];
+      if (!tokenInToUsdc || tokenInToUsdc.amountOut <= 0n) {
+        return null;
+      }
+      displayAmountIn = (DISPLAY_LOAN_USDC * tokenInToUsdc.amountIn) / tokenInToUsdc.amountOut;
+    }
+
+    const bestOut = (displayAmountIn * bestQuote.amountOut) / bestQuote.amountIn;
+    const compareOut = (displayAmountIn * compareQuote.amountOut) / compareQuote.amountIn;
+    if (bestOut <= compareOut) {
+      return null;
+    }
+
+    const tokenOutSpread = bestOut - compareOut;
+    if (tokenOutSymbol === 'USDC') {
+      return tokenOutSpread;
+    }
+
+    const tokenOutToUsdc = (pairQuotesByKey.get(`${tokenOutSymbol}->USDC`) || [])
+      .slice()
+      .sort((a, b) => (a.amountOut > b.amountOut ? -1 : 1))[0];
+    if (!tokenOutToUsdc || tokenOutToUsdc.amountOut <= 0n) {
+      return null;
+    }
+    return (tokenOutSpread * tokenOutToUsdc.amountOut) / tokenOutToUsdc.amountIn;
+  }
+
+  formatPairSpread(pairKeyName, pairQuotes, pairQuotesByKey) {
+    if (pairQuotes.length < 2) {
+      return null;
+    }
+    const ordered = pairQuotes.slice().sort((a, b) => (a.amountOut > b.amountOut ? -1 : 1));
+    const best = ordered[0];
+    const next = ordered[1];
+    const bestUnitPrice = this.quoteUnitPrice(best);
+    const nextUnitPrice = this.quoteUnitPrice(next);
+    const deltaPct = nextUnitPrice > 0 ? ((bestUnitPrice - nextUnitPrice) / nextUnitPrice) * 100 : 0;
+    const projectedSpreadUsdc = this.projectSpreadValueUsdc(best, next, pairQuotesByKey);
+
+    return `${pairKeyName}: ${this.shortDexName(best.dex)}=${bestUnitPrice.toFixed(4)} | `
+      + `${this.shortDexName(next.dex)}=${nextUnitPrice.toFixed(4)} | `
+      + `Δ=${deltaPct >= 0 ? '+' : ''}${deltaPct.toFixed(2)}% | `
+      + `100k spread≈${projectedSpreadUsdc == null ? 'n/a' : `${formatSignedUsdc(projectedSpreadUsdc)} USDC`}`;
+  }
+
   logScanSummary({ quotes, directCount, triangularCount, viableCount, bestAttempt, topCandidates = [] }) {
     const dexCounts = {};
     const bestByPair = new Map();
+    const pairQuotesByKey = new Map();
     const supportedDexes = ['uniswapV3', ...this.v2Dexes.map((dex) => dex.name), 'curve', 'balancer'];
 
     for (const quote of quotes.values()) {
       dexCounts[quote.dex] = (dexCounts[quote.dex] || 0) + 1;
       const key = `${quote.tokenIn.symbol}->${quote.tokenOut.symbol}`;
+      const entries = pairQuotesByKey.get(key) || [];
+      entries.push(quote);
+      pairQuotesByKey.set(key, entries);
       const existing = bestByPair.get(key);
       if (!existing || quote.amountOut > existing.amountOut) {
         bestByPair.set(key, quote);
@@ -506,6 +571,10 @@ class ArbitrageBot {
       .map(([pair, quote]) => (
         `${pair}=${quote.dex}:${formatTokenAmount(quote.amountOut, quote.tokenOut, 4)} ${quote.tokenOut.symbol}`
       ));
+    const pairSpreadLines = [...pairQuotesByKey.entries()]
+      .map(([pair, pairQuotes]) => this.formatPairSpread(pair, pairQuotes, pairQuotesByKey))
+      .filter(Boolean)
+      .sort();
 
     console.log('');
     console.log(renderPanel('SCAN SNAPSHOT', [
@@ -517,8 +586,15 @@ class ArbitrageBot {
 
     if (radarLines.length) {
       console.log(renderPanel('ROUTE RADAR', radarLines, '35'));
+      if (pairSpreadLines.length) {
+        console.log(renderPanel('PAIR SPREADS', pairSpreadLines.slice(0, 12), '34'));
+      }
     } else if (quoteParts.length) {
-      console.log(renderPanel('MARKET SNAPSHOT', chunkLines(quoteParts, 2), '35'));
+      if (pairSpreadLines.length) {
+        console.log(renderPanel('PAIR SPREADS', pairSpreadLines.slice(0, 12), '34'));
+      } else {
+        console.log(renderPanel('MARKET SNAPSHOT', chunkLines(quoteParts, 2), '35'));
+      }
     }
 
     if (bestAttempt) {
