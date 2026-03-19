@@ -590,9 +590,13 @@ class ArbitrageBot {
     const projectedFlashFee = (DISPLAY_LOAN_USDC * this.state.flashLoanFeeBps) / 10_000n;
     const projectedGas = ethers.parseUnits('0.75', TOKENS.USDC.decimals);
     const projectedFinal = projectedGrossReturn - projectedFlashFee - projectedGas;
+    const projectedPnl = projectedFinal - DISPLAY_LOAN_USDC;
+    const projectedPnlPct = Number((projectedPnl * 10_000n) / DISPLAY_LOAN_USDC) / 100;
+    const pnlPrefix = projectedPnl >= 0n ? '+' : '';
 
     return `USDC->${diagnostic.pair}(${this.shortDexName(diagnostic.buyDex)})->USDC(${this.shortDexName(diagnostic.sellDex)}): `
-      + `100k => ${formatUsdc(projectedFinal)} USDC after flash fee/gas`;
+      + `100k => ${formatUsdc(projectedFinal)} USDC after flash fee/gas `
+      + `(PnL ${pnlPrefix}${formatSignedUsdc(projectedPnl)} USDC, ${pnlPrefix}${projectedPnlPct.toFixed(2)}%)`;
   }
 
   logScanSummary({ quotes, directCount, triangularCount, viableCount, bestAttempt, directDiagnostics = [], topCandidates = [] }) {
