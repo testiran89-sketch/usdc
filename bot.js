@@ -35,7 +35,7 @@ const EMERGENCY_STOP_FILE = process.env.EMERGENCY_STOP_FILE || '.emergency-stop'
 
 const TOKEN_LIST = Object.values(TOKENS);
 const TOKEN_BY_ADDRESS = Object.fromEntries(TOKEN_LIST.map((token) => [token.address.toLowerCase(), token]));
-const SECONDARY_TOKENS = ['WETH', 'DAI', 'USDT'];
+const SECONDARY_TOKENS = Object.keys(TOKENS).filter((symbol) => symbol !== 'USDC');
 
 function pairKey(symbolA, symbolB) {
   return `${symbolA}-${symbolB}`;
@@ -81,6 +81,12 @@ function uniquePush(map, key, value) {
   }
 }
 
+function formatSignedUsdc(amount) {
+  const prefix = amount < 0n ? '-' : '';
+  const absolute = amount < 0n ? -amount : amount;
+  return `${prefix}${ethers.formatUnits(absolute, TOKENS.USDC.decimals)}`;
+}
+
 class ArbitrageBot {
   constructor() {
     if (!process.env.PRIVATE_KEY) {
@@ -120,9 +126,25 @@ class ArbitrageBot {
     this.uniswapRouterInterface = new ethers.Interface(UNISWAP_V3_ROUTER_ABI);
     this.sushiRouter = new ethers.Contract(ADDRESSES.sushiRouter, SUSHI_V2_ROUTER_ABI, this.provider);
     this.sushiRouterInterface = new ethers.Interface(SUSHI_V2_ROUTER_ABI);
+    this.camelotRouter = new ethers.Contract(ADDRESSES.camelotRouter, SUSHI_V2_ROUTER_ABI, this.provider);
+    this.camelotRouterInterface = new ethers.Interface(SUSHI_V2_ROUTER_ABI);
     this.balancerVault = new ethers.Contract(ADDRESSES.balancerVault, BALANCER_VAULT_ABI, this.provider);
     this.balancerVaultInterface = new ethers.Interface(BALANCER_VAULT_ABI);
     this.curvePoolInterface = new ethers.Interface(CURVE_POOL_ABI);
+    this.v2Dexes = [
+      {
+        name: 'sushiswap',
+        address: ADDRESSES.sushiRouter,
+        contract: this.sushiRouter,
+        interface: this.sushiRouterInterface
+      },
+      {
+        name: 'camelot',
+        address: ADDRESSES.camelotRouter,
+        contract: this.camelotRouter,
+        interface: this.camelotRouterInterface
+      }
+    ];
 
     const provider = new ethers.Contract(ADDRESSES.aavePoolAddressesProvider, AAVE_POOL_PROVIDER_ABI, this.provider);
     const poolAddress = await provider.getPool();
@@ -250,12 +272,14 @@ class ArbitrageBot {
       });
       decoders.push({ type: 'uniswap', tokenIn, tokenOut, fee: uniFee, amountIn: baseAmount });
 
-      multicallPayload.push({
-        target: ADDRESSES.sushiRouter,
-        allowFailure: true,
-        callData: this.sushiRouterInterface.encodeFunctionData('getAmountsOut', [baseAmount, [tokenIn.address, tokenOut.address]])
-      });
-      decoders.push({ type: 'sushi', tokenIn, tokenOut, amountIn: baseAmount });
+      for (const dex of this.v2Dexes) {
+        multicallPayload.push({
+          target: dex.address,
+          allowFailure: true,
+          callData: dex.interface.encodeFunctionData('getAmountsOut', [baseAmount, [tokenIn.address, tokenOut.address]])
+        });
+        decoders.push({ type: 'v2', dex: dex.name, tokenIn, tokenOut, amountIn: baseAmount });
+      }
 
       for (const curvePool of CURVE_POOLS) {
         const mapping = curvePool.supportedPairs[pairKey('USDC', secondarySymbol)];
@@ -288,10 +312,11 @@ class ArbitrageBot {
           amountOut: normalizeAmountOut(decoded),
           routeData: { fee: meta.fee }
         }));
-      } else if (meta.type === 'sushi') {
-        const [amounts] = this.sushiRouterInterface.decodeFunctionResult('getAmountsOut', response.returnData);
+      } else if (meta.type === 'v2') {
+        const dex = this.getV2Dex(meta.dex);
+        const [amounts] = dex.interface.decodeFunctionResult('getAmountsOut', response.returnData);
         this.storeQuote(quotes, this.makeQuote({
-          dex: 'sushiswap',
+          dex: meta.dex,
           tokenIn: meta.tokenIn,
           tokenOut: meta.tokenOut,
           amountIn: meta.amountIn,
@@ -313,6 +338,7 @@ class ArbitrageBot {
 
     for (const secondarySymbol of SECONDARY_TOKENS) {
       const tokenA = TOKENS[secondarySymbol];
+      await this.collectSupplementalQuotes(quotes, TOKENS.USDC, tokenA, DIRECT_BASE_SIZES.USDC);
       await this.collectReverseQuotes(quotes, tokenA, TOKENS.USDC, DIRECT_BASE_SIZES[secondarySymbol]);
     }
 
@@ -332,6 +358,18 @@ class ArbitrageBot {
     await this.collectCrossQuotes(quotes, tokenIn, tokenOut, amountIn);
   }
 
+  async collectSupplementalQuotes(quotes, tokenIn, tokenOut, amountIn) {
+    const quoteCalls = [
+      this.safeQuoteCurve(tokenIn, tokenOut, amountIn),
+      this.safeQuoteBalancer(tokenIn, tokenOut, amountIn)
+    ];
+
+    const results = (await Promise.all(quoteCalls)).flat().filter(Boolean);
+    for (const quote of results) {
+      this.storeQuote(quotes, quote);
+    }
+  }
+
   async collectCrossQuotes(quotes, tokenIn, tokenOut, amountIn) {
     const uniFee = UNISWAP_V3_FEES[pairKey(tokenIn.symbol, tokenOut.symbol)]
       || UNISWAP_V3_FEES[pairKey(tokenOut.symbol, tokenIn.symbol)]
@@ -339,7 +377,7 @@ class ArbitrageBot {
 
     const quoteCalls = [
       this.safeQuoteUniswap(tokenIn, tokenOut, amountIn, uniFee),
-      this.safeQuoteSushi(tokenIn, tokenOut, amountIn),
+      ...this.v2Dexes.map((dex) => this.safeQuoteV2Dex(dex.name, tokenIn, tokenOut, amountIn)),
       this.safeQuoteCurve(tokenIn, tokenOut, amountIn),
       this.safeQuoteBalancer(tokenIn, tokenOut, amountIn)
     ];
@@ -416,13 +454,14 @@ class ArbitrageBot {
         + `flashFee=${formatTokenAmount(bestAttempt.flashLoanFee, TOKENS.USDC, 6)} `
         + `net=${formatTokenAmount(bestAttempt.netProfit, TOKENS.USDC, 6)} USDC`
       );
+      console.log(this.describeOpportunity(bestAttempt));
     } else {
       console.log('[candidate] none');
     }
   }
 
   findDirectOpportunities(quotes) {
-    const dexes = ['uniswapV3', 'sushiswap', 'curve', 'balancer'];
+    const dexes = ['uniswapV3', ...this.v2Dexes.map((dex) => dex.name), 'curve', 'balancer'];
     const opportunities = [];
 
     for (const secondarySymbol of SECONDARY_TOKENS) {
@@ -464,7 +503,7 @@ class ArbitrageBot {
   }
 
   findTriangularOpportunities(quotes) {
-    const dexes = ['uniswapV3', 'sushiswap', 'curve', 'balancer'];
+    const dexes = ['uniswapV3', ...this.v2Dexes.map((dex) => dex.name), 'curve', 'balancer'];
     const opportunities = [];
 
     for (const firstToken of SECONDARY_TOKENS) {
@@ -558,8 +597,8 @@ class ArbitrageBot {
     if (step.dex === 'uniswapV3') {
       return ADDRESSES.uniswapV3Router;
     }
-    if (step.dex === 'sushiswap') {
-      return ADDRESSES.sushiRouter;
+    if (this.v2Dexes.some((dex) => dex.name === step.dex)) {
+      return this.getV2Dex(step.dex).address;
     }
     if (step.dex === 'balancer') {
       return ADDRESSES.balancerVault;
@@ -588,11 +627,12 @@ class ArbitrageBot {
       };
     }
 
-    if (step.dex === 'sushiswap') {
+    if (this.v2Dexes.some((dex) => dex.name === step.dex)) {
+      const dex = this.getV2Dex(step.dex);
       return {
-        target: ADDRESSES.sushiRouter,
+        target: dex.address,
         value: 0,
-        data: this.sushiRouterInterface.encodeFunctionData('swapExactTokensForTokens', [
+        data: dex.interface.encodeFunctionData('swapExactTokensForTokens', [
           amountIn,
           minAmountOut,
           [step.tokenIn.address, step.tokenOut.address],
@@ -671,11 +711,33 @@ class ArbitrageBot {
     }
   }
 
-  async safeQuoteSushi(tokenIn, tokenOut, amountIn) {
+  getV2Dex(name) {
+    const dex = this.v2Dexes.find((entry) => entry.name === name);
+    if (!dex) {
+      throw new Error(`Unsupported v2 dex ${name}`);
+    }
+    return dex;
+  }
+
+  describeOpportunity(opportunity) {
+    const routeSummary = opportunity.path.map((step) => (
+      `${step.dex}:${step.tokenIn.symbol}->${step.tokenOut.symbol} `
+      + `${formatTokenAmount(step.amountIn, step.tokenIn, 6)} -> ${formatTokenAmount(step.amountOut, step.tokenOut, 6)}`
+    )).join(' | ');
+    const verdict = opportunity.netProfit > MIN_PROFIT_USDC && opportunity.netProfit > 0n ? 'YES' : 'NO';
+    return `[analysis] route=${routeSummary} spread=${formatSignedUsdc(opportunity.expectedProfit)} USDC `
+      + `gas=${formatSignedUsdc(opportunity.estimatedGasCost || 0n)} USDC `
+      + `flashFee=${formatSignedUsdc(opportunity.flashLoanFee || 0n)} USDC `
+      + `net=${formatSignedUsdc(opportunity.netProfit || 0n)} USDC `
+      + `arb-worthy=${verdict}`;
+  }
+
+  async safeQuoteV2Dex(dexName, tokenIn, tokenOut, amountIn) {
+    const dex = this.getV2Dex(dexName);
     try {
-      const amounts = await this.sushiRouter.getAmountsOut(amountIn, [tokenIn.address, tokenOut.address]);
+      const amounts = await dex.contract.getAmountsOut(amountIn, [tokenIn.address, tokenOut.address]);
       return [this.makeQuote({
-        dex: 'sushiswap',
+        dex: dex.name,
         tokenIn,
         tokenOut,
         amountIn,
