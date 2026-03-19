@@ -16,7 +16,7 @@ const FLASH_LOAN_ARBITRAGE_ABI = [
 ];
 
 const MULTICALL3_ABI = [
-  'function aggregate3(tuple(address target,bool allowFailure,bytes callData)[] calls) payable returns (tuple(bool success,bytes returnData)[] returnData)'
+  'function aggregate3(tuple(address target,bool allowFailure,bytes callData)[] calls) view returns (tuple(bool success,bytes returnData)[] returnData)'
 ];
 
 const UNISWAP_V3_QUOTER_ABI = [

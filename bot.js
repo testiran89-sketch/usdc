@@ -234,7 +234,7 @@ class ArbitrageBot {
       }
     }
 
-    const responses = multicallPayload.length ? await this.multicall.aggregate3(multicallPayload) : [];
+    const responses = multicallPayload.length ? await this.multicall.aggregate3.staticCall(multicallPayload) : [];
     for (let index = 0; index < responses.length; index += 1) {
       const response = responses[index];
       if (!response.success) {
@@ -636,7 +636,7 @@ class ArbitrageBot {
         continue;
       }
       try {
-        const deltas = await this.balancerVault.queryBatchSwap(
+        const deltas = await this.balancerVault.queryBatchSwap.staticCall(
           0,
           [{
             poolId: pool.poolId,
