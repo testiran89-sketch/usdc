@@ -243,6 +243,7 @@ class ArbitrageBot {
     console.log(`Flash loan fee: ${this.state.flashLoanFeeBps} bps`);
     if (DEBUG_PRICE_LOG) {
       console.log(`Price debug logging: enabled${DEBUG_PRICE_PAIRS.size ? ` for ${[...DEBUG_PRICE_PAIRS].join(', ')}` : ' for all pairs'}`);
+      console.log('Debug mode makes many extra RPC calls. If you hit 429/rate-limit errors, set RPC_URLS to a comma-separated list of non-rate-limited Arbitrum endpoints.');
     } else {
       console.log('Price debug logging: disabled. Enable with DEBUG_PRICE_LOG=true (optionally set DEBUG_PRICE_PAIRS=USDC->WETH,WETH->USDC,USDC->ARB,ARB->USDC).');
     }

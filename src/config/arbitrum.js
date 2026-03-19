@@ -57,9 +57,9 @@ const ADDRESSES = {
 };
 
 const DEFAULT_RPC_URLS = [
-  'https://arb1.arbitrum.io/rpc',
   'https://arbitrum.blockpi.network/v1/rpc/public',
-  'https://rpc.ankr.com/arbitrum'
+  'https://rpc.ankr.com/arbitrum',
+  'https://arb1.arbitrum.io/rpc'
 ];
 
 const DIRECT_BASE_SIZES = {
