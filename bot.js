@@ -87,6 +87,38 @@ function formatSignedUsdc(amount) {
   return `${prefix}${ethers.formatUnits(absolute, TOKENS.USDC.decimals)}`;
 }
 
+function supportsColor() {
+  return Boolean(process.stdout.isTTY && !process.env.NO_COLOR);
+}
+
+function colorize(text, colorCode) {
+  if (!supportsColor()) {
+    return text;
+  }
+  return `\u001b[${colorCode}m${text}\u001b[0m`;
+}
+
+function padLine(value, width) {
+  return `${value}${' '.repeat(Math.max(0, width - value.length))}`;
+}
+
+function renderPanel(title, lines, colorCode = '36') {
+  const content = lines.length ? lines : [''];
+  const width = Math.max(title.length, ...content.map((line) => line.length));
+  const top = colorize(`┌─ ${title} ${'─'.repeat(Math.max(0, width - title.length))}┐`, colorCode);
+  const body = content.map((line) => colorize(`│ ${padLine(line, width)} │`, colorCode)).join('\n');
+  const bottom = colorize(`└${'─'.repeat(width + 2)}┘`, colorCode);
+  return `${top}\n${body}\n${bottom}`;
+}
+
+function chunkLines(items, itemsPerLine = 2) {
+  const lines = [];
+  for (let index = 0; index < items.length; index += itemsPerLine) {
+    lines.push(items.slice(index, index + itemsPerLine).join('  •  '));
+  }
+  return lines;
+}
+
 class ArbitrageBot {
   constructor() {
     if (!process.env.PRIVATE_KEY) {
@@ -422,6 +454,7 @@ class ArbitrageBot {
   logScanSummary({ quotes, directCount, triangularCount, viableCount, bestAttempt }) {
     const dexCounts = {};
     const bestByPair = new Map();
+    const supportedDexes = ['uniswapV3', ...this.v2Dexes.map((dex) => dex.name), 'curve', 'balancer'];
 
     for (const quote of quotes.values()) {
       dexCounts[quote.dex] = (dexCounts[quote.dex] || 0) + 1;
@@ -437,26 +470,32 @@ class ArbitrageBot {
       .map(([pair, quote]) => (
         `${pair}=${quote.dex}:${formatTokenAmount(quote.amountOut, quote.tokenOut, 4)} ${quote.tokenOut.symbol}`
       ));
+    const dexParts = supportedDexes.map((dex) => `${dex}:${dexCounts[dex] || 0}`);
+    const inactiveDexes = supportedDexes.filter((dex) => !dexCounts[dex]);
 
-    console.log(
-      `[scan] quotes=${quotes.size} dex=${JSON.stringify(dexCounts)} `
-      + `direct=${directCount} triangular=${triangularCount} viable=${viableCount}`
-    );
+    console.log('');
+    console.log(renderPanel('SCAN SNAPSHOT', [
+      `quotes=${quotes.size}`,
+      `dex=${dexParts.join(' | ')}`,
+      `direct=${directCount} triangular=${triangularCount} viable=${viableCount}`,
+      inactiveDexes.length ? `inactive=${inactiveDexes.join(', ')}` : 'inactive=none'
+    ], '36'));
 
     if (quoteParts.length) {
-      console.log(`[quotes] ${quoteParts.join(' | ')}`);
+      console.log(renderPanel('BEST PRICE BY PAIR', chunkLines(quoteParts, 2), '35'));
     }
 
     if (bestAttempt) {
-      console.log(
-        `[candidate] ${bestAttempt.id} gross=${formatTokenAmount(bestAttempt.expectedProfit, TOKENS.USDC, 6)} `
-        + `gas=${formatTokenAmount(bestAttempt.estimatedGasCost, TOKENS.USDC, 6)} `
-        + `flashFee=${formatTokenAmount(bestAttempt.flashLoanFee, TOKENS.USDC, 6)} `
-        + `net=${formatTokenAmount(bestAttempt.netProfit, TOKENS.USDC, 6)} USDC`
-      );
-      console.log(this.describeOpportunity(bestAttempt));
+      console.log(renderPanel('TOP CANDIDATE', [
+        `${bestAttempt.id}`,
+        `gross=${formatTokenAmount(bestAttempt.expectedProfit, TOKENS.USDC, 6)} gas=${formatTokenAmount(bestAttempt.estimatedGasCost, TOKENS.USDC, 6)} flashFee=${formatTokenAmount(bestAttempt.flashLoanFee, TOKENS.USDC, 6)} net=${formatTokenAmount(bestAttempt.netProfit, TOKENS.USDC, 6)} USDC`,
+        this.describeOpportunity(bestAttempt)
+      ], bestAttempt.netProfit > MIN_PROFIT_USDC && bestAttempt.netProfit > 0n ? '32' : '33'));
     } else {
-      console.log('[candidate] none');
+      console.log(renderPanel('TOP CANDIDATE', [
+        'No profitable route found on this scan.',
+        inactiveDexes.length ? `Missing live quotes from: ${inactiveDexes.join(', ')}` : 'All configured DEX buckets returned at least one quote.'
+      ], '33'));
     }
   }
 
