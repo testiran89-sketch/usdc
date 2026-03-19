@@ -208,35 +208,34 @@ class ArbitrageBot {
       this.wallet
     );
 
-    this.multicall = new ethers.Contract(ADDRESSES.multicall3, MULTICALL3_ABI, this.provider);
-    this.uniswapQuoter = new ethers.Contract(ADDRESSES.uniswapV3QuoterV2, UNISWAP_V3_QUOTER_ABI, this.provider);
+    this.multicallInterface = new ethers.Interface(MULTICALL3_ABI);
+    this.uniswapQuoterInterface = new ethers.Interface(UNISWAP_V3_QUOTER_ABI);
     this.uniswapRouterInterface = new ethers.Interface(UNISWAP_V3_ROUTER_ABI);
-    this.sushiRouter = new ethers.Contract(ADDRESSES.sushiRouter, SUSHI_V2_ROUTER_ABI, this.provider);
     this.sushiRouterInterface = new ethers.Interface(SUSHI_V2_ROUTER_ABI);
-    this.camelotRouter = new ethers.Contract(ADDRESSES.camelotRouter, SUSHI_V2_ROUTER_ABI, this.provider);
     this.camelotRouterInterface = new ethers.Interface(SUSHI_V2_ROUTER_ABI);
-    this.balancerVault = new ethers.Contract(ADDRESSES.balancerVault, BALANCER_VAULT_ABI, this.provider);
     this.balancerVaultInterface = new ethers.Interface(BALANCER_VAULT_ABI);
     this.curvePoolInterface = new ethers.Interface(CURVE_POOL_ABI);
     this.v2Dexes = [
       {
         name: 'sushiswap',
         address: ADDRESSES.sushiRouter,
-        contract: this.sushiRouter,
         interface: this.sushiRouterInterface
       },
       {
         name: 'camelot',
         address: ADDRESSES.camelotRouter,
-        contract: this.camelotRouter,
         interface: this.camelotRouterInterface
       }
     ];
 
-    const provider = new ethers.Contract(ADDRESSES.aavePoolAddressesProvider, AAVE_POOL_PROVIDER_ABI, this.provider);
-    const poolAddress = await provider.getPool();
-    const pool = new ethers.Contract(poolAddress, AAVE_POOL_ABI, this.provider);
-    this.state.flashLoanFeeBps = BigInt(await pool.FLASHLOAN_PREMIUM_TOTAL());
+    const poolAddress = await this.rpc.withFallback(async (provider) => {
+      const poolProvider = new ethers.Contract(ADDRESSES.aavePoolAddressesProvider, AAVE_POOL_PROVIDER_ABI, provider);
+      return poolProvider.getPool();
+    });
+    this.state.flashLoanFeeBps = BigInt(await this.rpc.withFallback(async (provider) => {
+      const pool = new ethers.Contract(poolAddress, AAVE_POOL_ABI, provider);
+      return pool.FLASHLOAN_PREMIUM_TOTAL();
+    }));
 
     console.log(`Connected to ${this.rpc.currentUrl}`);
     console.log(`Wallet: ${this.wallet.address}`);
@@ -396,7 +395,12 @@ class ArbitrageBot {
       }
     }
 
-    const responses = multicallPayload.length ? await this.multicall.aggregate3.staticCall(multicallPayload) : [];
+    const responses = multicallPayload.length
+      ? await this.rpc.withFallback(async (provider) => {
+        const multicall = new ethers.Contract(ADDRESSES.multicall3, MULTICALL3_ABI, provider);
+        return multicall.aggregate3.staticCall(multicallPayload);
+      })
+      : [];
     for (let index = 0; index < responses.length; index += 1) {
       const response = responses[index];
       if (!response.success) {
@@ -404,7 +408,7 @@ class ArbitrageBot {
       }
       const meta = decoders[index];
       if (meta.type === 'uniswap') {
-        const decoded = this.uniswapQuoter.interface.decodeFunctionResult('quoteExactInputSingle', response.returnData);
+        const decoded = this.uniswapQuoterInterface.decodeFunctionResult('quoteExactInputSingle', response.returnData);
         this.storeQuote(quotes, this.makeQuote({
           dex: 'uniswapV3',
           tokenIn: meta.tokenIn,
@@ -858,7 +862,7 @@ class ArbitrageBot {
     const params = this.buildFlashLoanParams(opportunity, true);
     const populated = await this.arbContract.requestArbitrage.populateTransaction(params);
     const estimate = await this.wallet.estimateGas(populated);
-    const feeData = await this.provider.getFeeData();
+    const feeData = await this.rpc.call('getFeeData');
     const gasPrice = feeData.gasPrice || feeData.maxFeePerGas || 0n;
     const gasWithBuffer = (estimate * BigInt(GAS_LIMIT_BUFFER_BPS)) / 10_000n;
     const ethCost = gasWithBuffer * gasPrice;
@@ -996,12 +1000,15 @@ class ArbitrageBot {
 
   async safeQuoteUniswap(tokenIn, tokenOut, amountIn, fee) {
     try {
-      const result = await this.uniswapQuoter.quoteExactInputSingle.staticCall({
+      const result = await this.rpc.withFallback(async (provider) => {
+        const quoter = new ethers.Contract(ADDRESSES.uniswapV3QuoterV2, UNISWAP_V3_QUOTER_ABI, provider);
+        return quoter.quoteExactInputSingle.staticCall({
         tokenIn: tokenIn.address,
         tokenOut: tokenOut.address,
         amountIn,
         fee,
         sqrtPriceLimitX96: 0
+        });
       });
       return [this.makeQuote({
         dex: 'uniswapV3',
@@ -1043,7 +1050,10 @@ class ArbitrageBot {
     try {
       for (const path of this.buildV2Paths(tokenIn, tokenOut)) {
         try {
-          const amounts = await dex.contract.getAmountsOut(amountIn, path);
+          const amounts = await this.rpc.withFallback(async (provider) => {
+            const router = new ethers.Contract(dex.address, SUSHI_V2_ROUTER_ABI, provider);
+            return router.getAmountsOut(amountIn, path);
+          });
           quotes.push(this.makeQuote({
             dex: dex.name,
             tokenIn,
@@ -1086,8 +1096,10 @@ class ArbitrageBot {
         continue;
       }
       try {
-        const curvePool = new ethers.Contract(pool.address, CURVE_POOL_ABI, this.provider);
-        const amountOut = await curvePool.get_dy(mapping.i, mapping.j, amountIn);
+        const amountOut = await this.rpc.withFallback(async (provider) => {
+          const curvePool = new ethers.Contract(pool.address, CURVE_POOL_ABI, provider);
+          return curvePool.get_dy(mapping.i, mapping.j, amountIn);
+        });
         quotes.push(this.makeQuote({
           dex: 'curve',
           tokenIn,
@@ -1111,7 +1123,9 @@ class ArbitrageBot {
         continue;
       }
       try {
-        const deltas = await this.balancerVault.queryBatchSwap.staticCall(
+        const deltas = await this.rpc.withFallback(async (provider) => {
+          const balancerVault = new ethers.Contract(ADDRESSES.balancerVault, BALANCER_VAULT_ABI, provider);
+          return balancerVault.queryBatchSwap.staticCall(
           0,
           [{
             poolId: pool.poolId,
@@ -1127,7 +1141,8 @@ class ArbitrageBot {
             recipient: process.env.ARBITRAGE_CONTRACT,
             toInternalBalance: false
           }
-        );
+          );
+        });
         const amountOut = deltas[mapping.assetOutIndex] < 0 ? -deltas[mapping.assetOutIndex] : 0n;
         if (amountOut > 0) {
           quotes.push(this.makeQuote({
