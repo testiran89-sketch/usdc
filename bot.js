@@ -32,6 +32,7 @@ const SIMULATION_SLIPPAGE_BPS = Number(process.env.SIMULATION_SLIPPAGE_BPS || 50
 const DEADLINE_SECONDS = Number(process.env.DEADLINE_SECONDS || 90);
 const GAS_LIMIT_BUFFER_BPS = Number(process.env.GAS_LIMIT_BUFFER_BPS || 12000);
 const EMERGENCY_STOP_FILE = process.env.EMERGENCY_STOP_FILE || '.emergency-stop';
+const DISPLAY_LOAN_USDC = ethers.parseUnits(process.env.DISPLAY_LOAN_USDC || '100000', TOKENS.USDC.decimals);
 
 const TOKEN_LIST = Object.values(TOKENS);
 const TOKEN_BY_ADDRESS = Object.fromEntries(TOKEN_LIST.map((token) => [token.address.toLowerCase(), token]));
@@ -274,7 +275,11 @@ class ArbitrageBot {
       directCount: directOpportunities.length,
       triangularCount: triangularOpportunities.length,
       viableCount: viable.length,
-      bestAttempt
+      bestAttempt,
+      topCandidates: opportunities
+        .slice()
+        .sort((a, b) => (a.netProfit > b.netProfit ? -1 : 1))
+        .slice(0, 6)
     });
 
     return viable;
@@ -451,27 +456,45 @@ class ArbitrageBot {
     return quotes.get(`${dex}:${tokenInSymbol}:${tokenOutSymbol}`);
   }
 
-  logScanSummary({ quotes, directCount, triangularCount, viableCount, bestAttempt }) {
+  shortDexName(dex) {
+    const aliases = {
+      uniswapV3: 'uni',
+      sushiswap: 'sushi',
+      camelot: 'camelot',
+      curve: 'curve',
+      balancer: 'bal'
+    };
+    return aliases[dex] || dex;
+  }
+
+  formatOpportunityRadar(opportunity) {
+    const route = opportunity.path
+      .map((step) => `${step.tokenOut.symbol}(${this.shortDexName(step.dex)})`)
+      .join('->');
+    const spreadBps = opportunity.loanAmount > 0n
+      ? Number((opportunity.expectedProfit * 10_000n) / opportunity.loanAmount) / 100
+      : 0;
+    const projectedGross = opportunity.loanAmount > 0n
+      ? (opportunity.expectedProfit * DISPLAY_LOAN_USDC) / opportunity.loanAmount
+      : 0n;
+    const projectedFlashFee = opportunity.loanAmount > 0n
+      ? ((opportunity.flashLoanFee || 0n) * DISPLAY_LOAN_USDC) / opportunity.loanAmount
+      : 0n;
+    const projectedNet = projectedGross - projectedFlashFee - (opportunity.estimatedGasCost || 0n);
+    const spreadPrefix = spreadBps >= 0 ? '+' : '';
+    return `${route}= ${spreadPrefix}${spreadBps.toFixed(2)}% (100k ≈ gross ${formatSignedUsdc(projectedGross)} / net ${formatSignedUsdc(projectedNet)} USDC)`;
+  }
+
+  logScanSummary({ quotes, directCount, triangularCount, viableCount, bestAttempt, topCandidates = [] }) {
     const dexCounts = {};
-    const bestByPair = new Map();
     const supportedDexes = ['uniswapV3', ...this.v2Dexes.map((dex) => dex.name), 'curve', 'balancer'];
 
     for (const quote of quotes.values()) {
       dexCounts[quote.dex] = (dexCounts[quote.dex] || 0) + 1;
-      const key = `${quote.tokenIn.symbol}->${quote.tokenOut.symbol}`;
-      const existing = bestByPair.get(key);
-      if (!existing || quote.amountOut > existing.amountOut) {
-        bestByPair.set(key, quote);
-      }
     }
-
-    const quoteParts = [...bestByPair.entries()]
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([pair, quote]) => (
-        `${pair}=${quote.dex}:${formatTokenAmount(quote.amountOut, quote.tokenOut, 4)} ${quote.tokenOut.symbol}`
-      ));
     const dexParts = supportedDexes.map((dex) => `${dex}:${dexCounts[dex] || 0}`);
     const inactiveDexes = supportedDexes.filter((dex) => !dexCounts[dex]);
+    const radarLines = topCandidates.map((opportunity) => this.formatOpportunityRadar(opportunity));
 
     console.log('');
     console.log(renderPanel('SCAN SNAPSHOT', [
@@ -481,8 +504,8 @@ class ArbitrageBot {
       inactiveDexes.length ? `inactive=${inactiveDexes.join(', ')}` : 'inactive=none'
     ], '36'));
 
-    if (quoteParts.length) {
-      console.log(renderPanel('BEST PRICE BY PAIR', chunkLines(quoteParts, 2), '35'));
+    if (radarLines.length) {
+      console.log(renderPanel('ROUTE RADAR', radarLines, '35'));
     }
 
     if (bestAttempt) {
