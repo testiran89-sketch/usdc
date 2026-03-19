@@ -487,14 +487,25 @@ class ArbitrageBot {
 
   logScanSummary({ quotes, directCount, triangularCount, viableCount, bestAttempt, topCandidates = [] }) {
     const dexCounts = {};
+    const bestByPair = new Map();
     const supportedDexes = ['uniswapV3', ...this.v2Dexes.map((dex) => dex.name), 'curve', 'balancer'];
 
     for (const quote of quotes.values()) {
       dexCounts[quote.dex] = (dexCounts[quote.dex] || 0) + 1;
+      const key = `${quote.tokenIn.symbol}->${quote.tokenOut.symbol}`;
+      const existing = bestByPair.get(key);
+      if (!existing || quote.amountOut > existing.amountOut) {
+        bestByPair.set(key, quote);
+      }
     }
     const dexParts = supportedDexes.map((dex) => `${dex}:${dexCounts[dex] || 0}`);
     const inactiveDexes = supportedDexes.filter((dex) => !dexCounts[dex]);
     const radarLines = topCandidates.map((opportunity) => this.formatOpportunityRadar(opportunity));
+    const quoteParts = [...bestByPair.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([pair, quote]) => (
+        `${pair}=${quote.dex}:${formatTokenAmount(quote.amountOut, quote.tokenOut, 4)} ${quote.tokenOut.symbol}`
+      ));
 
     console.log('');
     console.log(renderPanel('SCAN SNAPSHOT', [
@@ -506,6 +517,8 @@ class ArbitrageBot {
 
     if (radarLines.length) {
       console.log(renderPanel('ROUTE RADAR', radarLines, '35'));
+    } else if (quoteParts.length) {
+      console.log(renderPanel('MARKET SNAPSHOT', chunkLines(quoteParts, 2), '35'));
     }
 
     if (bestAttempt) {
